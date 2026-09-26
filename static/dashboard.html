@@ -1,0 +1,2447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>UEBA Dashboard</title>
+<style>
+  :root {
+    /* "Blue mode": a genuinely blue-toned dark theme (deep navy surfaces),
+       rather than a near-black background with only blue accent colours. */
+    --bg:#083588; --panel:#083579; --border:#264674; --text:#eaedf3; --muted:#93a8ce;
+    --low:#4b7bec; --medium:#f7b731; --high:#fa8231; --critical:#eb3b5a;
+    --open:#3867d6; --ack:#8854d0; --resolved:#20bf6b; --fp:#576574;
+  }
+  /* "White mode": a light alternative to the default dark/blue theme.
+     Severity and status accent colours are kept close to the original so
+     badges stay legible and recognisable in both themes; only the
+     background/panel/text/border/muted surface colours change. */
+  body.theme-white {
+    --bg:#f5f6fa; --panel:#ffffff; --border:#dcdfe6; --text:#1a1a2e; --muted:#5b6272;
+    --low:#4169e1; --medium:#b8860b; --high:#d2691e; --critical:#c0392b;
+    --open:#2e5bda; --ack:#7048b8; --resolved:#1e9e5a; --fp:#6b7280;
+  }
+  body.theme-white tr:hover td { background: #eef0f6; }
+  body.theme-white .detector-header:hover { background: #eef0f6; }
+  body.theme-white .detector-body .field { background: #f0f1f6; }
+  body.theme-white a { color: #2e5bda; }
+  body.theme-white .desc { color: #333a4d; }
+  body.theme-white .detail-field pre { color: #333a4d; }
+  /* "Black mode": a true-black alternative to the default dark-navy/blue
+     theme, for OLED screens or users who prefer a more neutral dark
+     surface. Severity/status accent colours are kept identical to the
+     default theme so badges stay recognisable across all three themes. */
+  body.theme-black {
+    --bg:#000000; --panel:#121212; --border:#2b2b2b; --text:#f0f0f0; --muted:#9a9a9a;
+  }
+  body.theme-black tr:hover td { background: #1a1a1a; }
+  body.theme-black .detector-header:hover { background: #1a1a1a; }
+  body.theme-black .detector-body .field { background: #0a0a0a; }
+  /* Adjustable font size: one root variable, scaling the whole app via
+     zoom rather than rewriting every hardcoded px value in this file. */
+  #app, #loginScreen { zoom: var(--app-zoom, 1); }
+
+  /* Keyboard accessibility: a clearly visible focus indicator on every
+     interactive element, including custom ones (table rows, collapsible
+     headers) that don't get one from the browser by default. Uses
+     :focus-visible so it only shows for keyboard/switch users, not on
+     every mouse click. */
+  :focus-visible {
+    outline: 3px solid #6a9bff;
+    outline-offset: 2px;
+  }
+  body.theme-white :focus-visible {
+    outline-color: #2e5bda;
+  }
+  tr.clickable-row:focus-visible { outline-offset: -2px; }
+  .loading-note { color: var(--muted); font-size: 12px; font-style: italic; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background:var(--bg); color:var(--text); }
+  header { padding: 20px 28px; border-bottom: 1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-wrap: wrap; gap: 12px; }
+  header h1 { font-size: 20px; margin:0; font-weight:600; }
+  nav.tabs { display:flex; gap:8px; }
+  nav.tabs button { background:transparent; border:1px solid var(--border); }
+  nav.tabs button.active { background:#3867d6; border-color:#3867d6; }
+  .stats { display:flex; gap:16px; align-items:center; }
+  .stat { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:10px 16px; text-align:center; min-width:80px; }
+  .stat .n { font-size:20px; font-weight:700; }
+  .stat .l { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .whoami { color: var(--muted); font-size: 13px; margin-right: 8px; }
+  .role-pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; background:#2a2e3a; color:#c7cbd6; margin-left:6px; }
+  .toolbar { display:flex; gap:10px; padding: 16px 28px; flex-wrap:wrap; align-items:center; }
+  select, input, button { background:var(--panel); border:1px solid var(--border); color:var(--text); padding:8px 12px; border-radius:8px; font-size:13px; }
+  button { cursor:pointer; }
+  button:hover { border-color:#4a4f60; }
+  button.primary { background:#3867d6; border-color:#3867d6; }
+  button.danger { background:#eb3b5a; border-color:#eb3b5a; }
+  .refresh-note { color:var(--muted); font-size:12px; margin-left:auto; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding: 10px 14px; border-bottom:1px solid var(--border); font-size:13px; vertical-align: top; }
+  th { color:var(--muted); font-weight:600; text-transform:uppercase; font-size:11px; letter-spacing:.04em; }
+  tr:hover td { background: #16305a; }
+  .badge { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:600; color:#0f1117; white-space:nowrap; }
+  .sev-low{background:var(--low); color:#fff;} .sev-medium{background:var(--medium);}
+  .sev-high{background:var(--high); color:#fff;} .sev-critical{background:var(--critical); color:#fff;}
+  .st-open{background:var(--open); color:#fff;} .st-acknowledged{background:var(--ack); color:#fff;}
+  .st-resolved{background:var(--resolved);} .st-false_positive{background:var(--fp); color:#fff;}
+  .actions button { font-size:11px; padding:5px 8px; margin-right:4px; }
+  .empty { text-align:center; padding: 60px 20px; color:var(--muted); }
+  .desc { max-width: 420px; color: #c7cbd6; }
+  .detail-field { margin-bottom: 18px; }
+  .detail-field .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+  .detail-field .value { font-size: 14px; color: var(--text); }
+  .detail-field pre { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-size: 12px; color: #c7cbd6; overflow-x: auto; margin: 0; }
+  .detail-actions { display: flex; gap: 10px; margin-top: 24px; }
+  tr.clickable-row { cursor: pointer; }
+  .time { color: var(--muted); white-space:nowrap; }
+  a { color: #7fb0ff; }
+
+  #app { display: none; }
+  .view { display: none; }
+  .view.active { display: block; }
+
+  #loginScreen {
+    min-height: 100vh; display:flex; align-items:center; justify-content:center;
+  }
+  .login-card {
+    background: var(--panel); border:1px solid var(--border); border-radius: 14px;
+    padding: 32px 36px; width: 320px;
+  }
+  .login-card h2 { margin: 0 0 4px 0; font-size: 18px; }
+  .login-card p { margin: 0 0 20px 0; color: var(--muted); font-size: 13px; }
+  .login-card label { display:block; font-size: 12px; color: var(--muted); margin-bottom: 6px; margin-top: 14px; }
+  .login-card input { width: 100%; }
+  .login-card button { width: 100%; margin-top: 20px; padding: 10px; }
+  .login-error { color: var(--critical); font-size: 13px; margin-top: 12px; min-height: 16px; }
+  .field-error { color: var(--critical); font-size: 12px; margin: 4px 0 0 0; min-height: 14px; }
+  .auth-tabs { display:flex; gap:8px; margin: 4px 0 8px 0; }
+  .auth-tabs button { flex:1; background:transparent; padding: 8px; }
+  .auth-tabs button.active { background:#3867d6; border-color:#3867d6; }
+  #signupForm label:first-of-type { margin-top: 14px; }
+
+  /* Settings panel */
+  #settingsView { padding: 8px 28px 40px 28px; }
+  .settings-toolbar { display:flex; gap:10px; align-items:center; padding: 8px 0 20px 0; flex-wrap:wrap; }
+  .settings-toolbar select { min-width: 220px; }
+  .settings-note { color: var(--muted); font-size: 12px; margin-left: auto; }
+  .config-form { display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px 20px; }
+  .field { background: var(--panel); border:1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .field label { display:block; font-size: 11px; color: var(--muted); text-transform:uppercase; letter-spacing:.03em; margin-bottom: 8px; }
+  .field input[type=text], .field input[type=time], .field input[type=number], .field select {
+    width: 100%; padding: 7px 10px;
+  }
+  .field.checkbox-field { display:flex; align-items:center; gap:8px; }
+  .field.checkbox-field label { margin: 0; text-transform:none; font-size: 13px; color: var(--text); }
+  .workdays { display:flex; gap:8px; flex-wrap:wrap; }
+  .detector-group { grid-column: 1 / -1; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 4px; overflow: hidden; }
+  .detector-header { display:flex; align-items:center; gap:10px; padding: 14px 16px; cursor: pointer; user-select: none; }
+  .detector-header:hover { background: #16305a; }
+  .detector-header .name { font-weight: 600; font-size: 14px; flex: 1; }
+  .detector-header .chevron { color: var(--muted); transition: transform 0.15s; }
+  .detector-header .chevron.open { transform: rotate(90deg); }
+  .detector-body { display:none; padding: 4px 16px 16px 16px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px 20px; }
+  .detector-body.open { display: grid; }
+  .detector-body .field { background: #0d1e3a; }
+  .workdays label { display:flex; align-items:center; gap:4px; font-size:12px; color: var(--text); text-transform:none; margin:0; }
+  .save-bar { display:flex; gap:10px; align-items:center; margin-top: 24px; }
+  .save-note { color: var(--resolved); font-size: 13px; min-height: 16px; }
+  .ent-active { background: var(--resolved); }
+  .ent-restricted { background: var(--critical); color: #fff; }
+</style>
+</head>
+<body>
+<script>
+  (function() {
+    try {
+      // Default for anyone who hasn't chosen yet: follow the system.
+      var savedTheme = localStorage.getItem('uebaTheme') || 'auto';
+      var resolved = savedTheme;
+      if (savedTheme === 'auto') {
+        // matchMedia is synchronous, so this resolves before first paint --
+        // no flash of the wrong theme while we wait on anything async.
+        var systemPrefersDark = window.matchMedia &&
+          window.matchMedia('(prefers-color-scheme: dark)').matches;
+        resolved = systemPrefersDark ? 'blue' : 'white';
+      }
+      if (resolved === 'white') {
+        document.body.classList.add('theme-white');
+      } else if (resolved === 'black') {
+        document.body.classList.add('theme-black');
+      }
+      var zoom = localStorage.getItem('uebaZoom');
+      if (zoom) {
+        document.documentElement.style.setProperty('--app-zoom', zoom);
+      }
+    } catch (e) { /* localStorage unavailable -- fall back to defaults */ }
+  })();
+</script>
+
+<div id="loginScreen">
+  <div class="login-card">
+    <h2>UEBA Dashboard</h2>
+    <div class="auth-tabs">
+      <button type="button" id="authTabSignin" class="active">Sign In</button>
+      <button type="button" id="authTabSignup">Sign Up</button>
+    </div>
+
+    <form id="loginForm">
+      <p>Sign in to view and triage anomalies.</p>
+      <label for="loginIdentifier">Username or email</label>
+      <input type="text" id="loginIdentifier" autocomplete="username" required>
+      <label for="loginPassword">Password</label>
+      <input type="password" id="loginPassword" autocomplete="current-password" required>
+      <button type="submit" class="primary">Sign in</button>
+      <div class="login-error" id="loginError" role="alert" aria-live="assertive"></div>
+    </form>
+
+    <form id="signupForm" style="display:none;">
+      <p>Create a new account.</p>
+      <label for="signupUsername">Username</label>
+      <input type="text" id="signupUsername" autocomplete="username" required>
+      <label for="signupEmail">Email address</label>
+      <input type="email" id="signupEmail" autocomplete="email" required>
+      <div class="field-error" id="signupEmailError" role="alert" aria-live="polite"></div>
+      <label for="signupRole">Log in as</label>
+      <select id="signupRole">
+        <option value="analyst">1. Analyst</option>
+        <option value="employee">2. Employee</option>
+      </select>
+      <label for="signupPassword">Password</label>
+      <input type="password" id="signupPassword" autocomplete="new-password" required>
+      <label for="signupConfirm">Confirm password</label>
+      <input type="password" id="signupConfirm" autocomplete="new-password" required>
+      <button type="submit" class="primary">Create account</button>
+      <div class="login-error" id="signupError" role="alert" aria-live="assertive"></div>
+      <div class="save-note" id="signupSuccess" role="status" aria-live="polite"></div>
+    </form>
+  </div>
+</div>
+
+<div id="mustChangePasswordScreen" style="display:none; min-height:100vh; align-items:center; justify-content:center;">
+  <div class="login-card">
+    <h2>Set a new password</h2>
+    <p>This account is still using the system default password. Choose your own before continuing.</p>
+    <form id="mustChangePasswordForm">
+      <label for="mcpCurrentPassword">Current (default) password</label>
+      <input type="password" id="mcpCurrentPassword" autocomplete="current-password" required>
+      <label for="mcpNewPassword">New password</label>
+      <input type="password" id="mcpNewPassword" autocomplete="new-password" required>
+      <label for="mcpConfirmPassword">Confirm new password</label>
+      <input type="password" id="mcpConfirmPassword" autocomplete="new-password" required>
+      <button type="submit" class="primary">Set password and continue</button>
+      <div class="login-error" id="mcpError" role="alert" aria-live="assertive"></div>
+    </form>
+  </div>
+</div>
+
+<div id="app">
+<header>
+  <div style="display:flex; align-items:center; gap:20px;">
+    <h1>UEBA Dashboard</h1>
+    <nav class="tabs">
+      <button id="tabAnomalies" class="active">Anomalies</button>
+      <button id="tabSocialMedia" style="display:none;">Social Media</button>
+      <button id="tabSettings" style="display:none;">Settings</button>
+    </nav>
+  </div>
+  <div class="stats">
+    <span class="whoami" id="whoami"></span>
+    <button id="fontSmallerBtn" title="Decrease font size" aria-label="Decrease font size" style="padding:8px 10px;">A-</button>
+    <button id="fontLargerBtn" title="Increase font size" aria-label="Increase font size" style="padding:8px 10px;">A+</button>
+    <label for="themeSelect" style="font-size:12px; color:var(--muted); margin-right:2px;">Theme:</label>
+    <select id="themeSelect" title="Switch colour theme" aria-label="Switch colour theme">
+      <option value="auto">Auto (match system)</option>
+      <option value="blue">Blue mode</option>
+      <option value="black">Black mode</option>
+      <option value="white">White mode</option>
+    </select>
+    <button id="logoutBtn">Log out</button>
+  </div>
+</header>
+
+<div id="noAccessView" class="empty" style="display:none; padding-top: 80px;">
+  You're signed in, but this account doesn't have access to view security
+  data on this dashboard.
+</div>
+
+<div id="anomaliesView" class="view active">
+  <div id="entitySummarySubview">
+    <div class="toolbar">
+      <select id="summaryStatusFilter">
+        <option value="">All statuses</option>
+        <option value="open" selected>Open</option>
+        <option value="acknowledged">Acknowledged</option>
+        <option value="resolved">Resolved</option>
+        <option value="false_positive">False positive</option>
+      </select>
+      <select id="summarySeverityFilter">
+        <option value="">All severities</option>
+        <option value="critical">Critical</option>
+        <option value="high">High</option>
+        <option value="medium">Medium</option>
+        <option value="low">Low</option>
+      </select>
+      <select id="summaryUnitFilter">
+        <option value="">All units</option>
+      </select>
+      <button id="summaryRefreshBtn" class="primary">Refresh</button>
+      <span class="refresh-note" id="summaryLastUpdated"></span>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Entity</th><th>Unit</th><th>Open</th><th>Total</th><th>Highest Severity</th><th>Last Seen (GMT)</th></tr>
+      </thead>
+      <tbody id="entitySummaryRows"></tbody>
+    </table>
+    <div id="entitySummaryEmptyState" class="empty" style="display:none">No anomalies match these filters.</div>
+  </div>
+
+  <div id="anomalyListSubview" style="display:none;">
+    <button id="backToEntitiesBtn" style="margin-bottom:16px;">&larr; Back to All Entities</button>
+    <h3 id="anomalyListTitle" style="margin: 0 0 12px 0;"></h3>
+    <div class="toolbar">
+      <select id="statusFilter">
+        <option value="">All statuses</option>
+        <option value="open" selected>Open</option>
+        <option value="acknowledged">Acknowledged</option>
+        <option value="resolved">Resolved</option>
+        <option value="false_positive">False positive</option>
+      </select>
+      <select id="severityFilter">
+        <option value="">All severities</option>
+        <option value="critical">Critical</option>
+        <option value="high">High</option>
+        <option value="medium">Medium</option>
+        <option value="low">Low</option>
+      </select>
+      <select id="unitFilter">
+        <option value="">All units</option>
+      </select>
+      <input type="text" id="entityFilter" placeholder="Filter by entity name...">
+      <button id="refreshBtn" class="primary">Refresh</button>
+      <div class="stats" id="stats"></div>
+      <span class="refresh-note" id="lastUpdated"></span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th><th>Entity</th><th>Rule</th><th>Severity</th><th>Status</th><th id="actionsHeader">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div id="emptyState" class="empty" style="display:none">No anomalies match these filters.</div>
+  </div>
+
+  <div id="anomalyDetailSubview" style="display:none;">
+    <button id="backToListBtn" style="margin-bottom:16px;">&larr; Back to Anomalies</button>
+    <div id="anomalyDetailContent"></div>
+  </div>
+</div>
+
+<div id="socialMediaView" class="view">
+  <p style="color:var(--muted); font-size:13px; margin-top:0;">
+    Visits to known social media sites, tracked for visibility these are
+    never flagged as anomalies. "During Work Hours"
+  </p>
+
+  <div style="margin-bottom: 24px;">
+    <label style="display:block; font-size: 11px; color: var(--muted); text-transform:uppercase; letter-spacing:.03em; margin-bottom: 10px;">Restrictions</label>
+    <table>
+      <thead>
+        <tr><th>Entity</th><th>Unit</th><th>Block social media during working hours</th></tr>
+      </thead>
+      <tbody id="socialMediaBlockRows"></tbody>
+    </table>
+    <div id="socialMediaBlockEmptyState" class="empty" style="display:none">No systems found yet.</div>
+  </div>
+
+  <div class="toolbar">
+    <select id="socialMediaUnitFilter">
+      <option value="">All units</option>
+    </select>
+    <button id="socialMediaRefreshBtn" class="primary">Refresh</button>
+    <span class="refresh-note" id="socialMediaLastUpdated"></span>
+  </div>
+  <table>
+    <thead>
+      <tr><th>Entity</th><th>Site</th><th>Start (GMT)</th><th>End (GMT)</th><th>Duration</th><th>During Work Hours</th><th></th></tr>
+    </thead>
+    <tbody id="socialMediaRows"></tbody>
+  </table>
+  <div id="socialMediaEmptyState" class="empty" style="display:none">No social media activity recorded yet.</div>
+</div>
+
+<div id="settingsView" class="view">
+  <nav class="tabs" style="margin-bottom: 16px;">
+    <button id="settingsSubThresholds" class="active">Thresholds &amp; Working Hours</button>
+    <button id="settingsSubEntities">Manage Systems</button>
+    <button id="settingsSubPending">Manage Users <span id="pendingCount" class="badge" style="display:none; background:var(--critical); color:#fff; margin-left:4px;"></span></button>
+  </nav>
+
+  <div id="thresholdsSubview">
+    <div class="settings-toolbar">
+      <label for="configEntitySelect" style="margin:0; color:var(--muted); font-size:12px;">Editing:</label>
+      <select id="configEntitySelect">
+        <option value="">Global Default</option>
+      </select>
+      <button id="revertBtn" style="display:none;">Revert to default</button>
+      <span class="settings-note" id="configSourceNote"></span>
+    </div>
+    <div class="config-form" id="configForm"></div>
+    <div class="save-bar">
+      <button id="saveConfigBtn" class="primary">Save changes</button>
+      <span class="save-note" id="saveNote" role="status" aria-live="polite"></span>
+    </div>
+  </div>
+
+  <div id="entitiesSubview" style="display:none;">
+    <div class="field" style="margin-bottom: 20px;">
+      <label>Add a new system</label>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px;">
+        <input type="text" id="newEntityName" placeholder="Name (e.g. Windows username)" style="flex:1; min-width:160px;">
+        <select id="newEntityType">
+          <option value="user">User</option>
+          <option value="host">Host</option>
+          <option value="service_account">Service account</option>
+        </select>
+        <select id="newEntityDept"></select>
+        <input type="text" id="newEntityDeptOther" placeholder="Unit name" style="display:none; flex:1; min-width:140px;">
+        <button id="addEntityBtn" class="primary">Add system</button>
+      </div>
+      <div class="save-note" id="addEntityNote" style="margin-top:8px;" role="status" aria-live="polite"></div>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Type</th><th>Unit</th><th>Status</th><th>Merge duplicate into...</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="entityRows"></tbody>
+    </table>
+
+    <div style="margin-top: 28px;">
+      <label style="display:block; font-size: 11px; color: var(--muted); text-transform:uppercase; letter-spacing:.03em; margin-bottom: 10px;">Merge History</label>
+      <table>
+        <thead>
+          <tr><th>Duplicate</th><th>Merged Into</th><th>Events</th><th>Anomalies</th><th>Merged By</th><th>Merged (GMT)</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="mergeHistoryRows"></tbody>
+      </table>
+      <div id="mergeHistoryEmptyState" class="empty" style="display:none;">No merges yet.</div>
+    </div>
+  </div>
+
+
+  <div id="pendingSubview" style="display:none;">
+    <p style="color:var(--muted); font-size:13px; margin-top:0;">
+      Every dashboard login. Every self-registered account -- Analyst or
+      Employee -- starts marked <strong>Pending</strong> and can't sign in
+      until approved here. Deleting a user permanently removes their login
+      from the database -- not a deactivation, and not reversible.
+    </p>
+    <div style="margin-bottom:16px;">
+      <button id="resetAllPasswordsBtn" class="danger">Reset ALL Passwords to Default</button>
+      <span class="save-note" id="resetAllNote" style="margin-left:10px;" role="status" aria-live="polite"></span>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Requested</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="pendingRows"></tbody>
+    </table>
+    <div id="pendingEmptyState" class="empty" style="display:none;">No users found.</div>
+  </div>
+</div>
+
+</div>
+
+<script>
+const API = ''; // same origin as this page
+let entityCache = {};
+let currentEntityFilter = null; // { id, name } when drilled into one entity's anomalies, else null
+
+// Organizational units systems can be grouped into. "Other" reveals a
+// free-text field for anything not on this list.
+const UNITS = ['Managers', 'Human Resources (HR)', 'Finance and Accounting', 'Marketing', 'Sales'];
+
+function populateUnitOptions(selectEl, { includeAllOption = false, includeUnassigned = false, includeOther = false } = {}) {
+  selectEl.innerHTML = '';
+  if (includeAllOption) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'All units';
+    selectEl.appendChild(opt);
+  }
+  if (includeUnassigned) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'Unassigned';
+    selectEl.appendChild(opt);
+  }
+  UNITS.forEach(unit => {
+    const opt = document.createElement('option');
+    opt.value = unit;
+    opt.textContent = unit;
+    selectEl.appendChild(opt);
+  });
+  if (includeOther) {
+    const opt = document.createElement('option');
+    opt.value = '__other__';
+    opt.textContent = 'Other...';
+    selectEl.appendChild(opt);
+  }
+}
+let refreshTimer = null;
+let currentUser = null; // { username, role, entity_id, entity_name }
+
+function getToken() { return localStorage.getItem('ueba_token'); }
+function setToken(token) { localStorage.setItem('ueba_token', token); }
+function clearToken() { localStorage.removeItem('ueba_token'); }
+
+function authHeaders() {
+  const token = getToken();
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+}
+
+// Wraps fetch: adds the auth header, and if the server says the session is
+// no longer valid, drops back to the login screen automatically.
+async function authFetch(path, options = {}) {
+  const res = await fetch(`${API}${path}`, {
+    ...options,
+    headers: { ...(options.headers || {}), ...authHeaders() },
+  });
+  if (res.status === 401) {
+    clearToken();
+    showLogin();
+    throw new Error('Session expired');
+  }
+  return res;
+}
+
+function showLogin() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('mustChangePasswordScreen').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+  switchAuthTab('signin');
+}
+
+function showMustChangePassword() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('mustChangePasswordScreen').style.display = 'flex';
+}
+
+function applyRoleUI() {
+  const role = currentUser.role;
+  document.getElementById('whoami').innerHTML =
+    'Signed in as ' + currentUser.username + `<span class="role-pill">${role}</span>`;
+
+  const hasAccess = role === 'admin' || role === 'analyst';
+
+  // Settings tab: admin only.
+  document.getElementById('tabSettings').style.display = (role === 'admin') ? 'inline-block' : 'none';
+  document.getElementById('tabAnomalies').style.display = hasAccess ? 'inline-block' : 'none';
+  document.getElementById('tabSocialMedia').style.display = hasAccess ? 'inline-block' : 'none';
+  document.getElementById('noAccessView').style.display = hasAccess ? 'none' : 'block';
+  if (!hasAccess) {
+    document.getElementById('anomaliesView').classList.remove('active');
+    document.getElementById('socialMediaView').classList.remove('active');
+    document.getElementById('settingsView').classList.remove('active');
+  }
+}
+
+function showApp() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  applyRoleUI();
+  if (currentUser.role === 'admin' || currentUser.role === 'analyst') {
+    switchTab('anomalies');
+    init();
+  }
+}
+
+function switchTab(tab) {
+  document.getElementById('tabAnomalies').classList.toggle('active', tab === 'anomalies');
+  document.getElementById('tabSocialMedia').classList.toggle('active', tab === 'socialMedia');
+  document.getElementById('tabSettings').classList.toggle('active', tab === 'settings');
+  document.getElementById('anomaliesView').classList.toggle('active', tab === 'anomalies');
+  document.getElementById('socialMediaView').classList.toggle('active', tab === 'socialMedia');
+  document.getElementById('settingsView').classList.toggle('active', tab === 'settings');
+  if (tab === 'anomalies') backToEntitySummary();
+  if (tab === 'socialMedia') { loadSocialMediaBlockSettings(); loadSocialMediaActivity(); }
+  if (tab === 'settings') loadSettingsTab();
+}
+// ---------------------------------------------------------------------------
+// Auth screen: Sign In / Sign Up tabs
+// ---------------------------------------------------------------------------
+function switchAuthTab(tab) {
+  document.getElementById('authTabSignin').classList.toggle('active', tab === 'signin');
+  document.getElementById('authTabSignup').classList.toggle('active', tab === 'signup');
+  document.getElementById('loginForm').style.display = (tab === 'signin') ? 'block' : 'none';
+  document.getElementById('signupForm').style.display = (tab === 'signup') ? 'block' : 'none';
+}
+document.getElementById('authTabSignin').addEventListener('click', () => switchAuthTab('signin'));
+document.getElementById('authTabSignup').addEventListener('click', () => switchAuthTab('signup'));
+
+// Simple client-side format check, mirroring the server's rule -- gives
+// immediate feedback instead of waiting for a round trip to the API.
+const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+function validateSignupEmail() {
+  const email = document.getElementById('signupEmail').value.trim();
+  const errEl = document.getElementById('signupEmailError');
+  if (email && !EMAIL_PATTERN.test(email)) {
+    errEl.textContent = 'Please enter a valid email address.';
+    return false;
+  }
+  errEl.textContent = '';
+  return true;
+}
+document.getElementById('signupEmail').addEventListener('input', validateSignupEmail);
+document.getElementById('signupEmail').addEventListener('blur', validateSignupEmail);
+
+document.getElementById('tabAnomalies').addEventListener('click', () => switchTab('anomalies'));
+document.getElementById('tabSocialMedia').addEventListener('click', () => switchTab('socialMedia'));
+document.getElementById('tabSettings').addEventListener('click', () => switchTab('settings'));
+
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const username = document.getElementById('loginIdentifier').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  try {
+    const res = await fetch(`${API}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      errEl.textContent = err.detail || 'Invalid username/email or password.';
+      return;
+    }
+    const data = await res.json();
+    setToken(data.token);
+    currentUser = { username: data.username, role: data.role, entity_id: data.entity_id, entity_name: data.entity_name };
+    if (data.must_change_password) {
+      showMustChangePassword();
+      return;
+    }
+    showApp();
+  } catch (err) {
+    errEl.textContent = 'Could not reach the server. Is the API running?';
+  }
+});
+
+document.getElementById('mustChangePasswordForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const currentPassword = document.getElementById('mcpCurrentPassword').value;
+  const newPassword = document.getElementById('mcpNewPassword').value;
+  const confirmPassword = document.getElementById('mcpConfirmPassword').value;
+  const errEl = document.getElementById('mcpError');
+  errEl.textContent = '';
+
+  if (newPassword !== confirmPassword) {
+    errEl.textContent = 'New passwords do not match.';
+    return;
+  }
+  if (newPassword.length < 8) {
+    errEl.textContent = 'New password must be at least 8 characters.';
+    return;
+  }
+
+  try {
+    const res = await authFetch('/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      errEl.textContent = err.detail || 'Could not change the password.';
+      return;
+    }
+    document.getElementById('mustChangePasswordForm').reset();
+    showApp();
+  } catch (err) {
+    errEl.textContent = 'Could not reach the server. Is the API running?';
+  }
+});
+
+document.getElementById('signupForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const username = document.getElementById('signupUsername').value.trim();
+  const email = document.getElementById('signupEmail').value.trim();
+  const role = document.getElementById('signupRole').value;
+  const password = document.getElementById('signupPassword').value;
+  const confirm = document.getElementById('signupConfirm').value;
+  const errEl = document.getElementById('signupError');
+  const successEl = document.getElementById('signupSuccess');
+  errEl.textContent = '';
+  successEl.textContent = '';
+
+  if (!validateSignupEmail()) {
+    errEl.textContent = 'Please enter a valid email address.';
+    return;
+  }
+  if (password !== confirm) {
+    errEl.textContent = 'Passwords do not match.';
+    return;
+  }
+  if (password.length < 8) {
+    errEl.textContent = 'Password must be at least 8 characters.';
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API}/auth/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, email, password, role }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      errEl.textContent = err.detail || 'Could not create the account.';
+      return;
+    }
+    const data = await res.json();
+    if (data.pending_approval) {
+      successEl.textContent = data.message;
+      document.getElementById('signupForm').reset();
+      return;
+    }
+    setToken(data.token);
+    currentUser = { username: data.username, role: data.role, entity_id: data.entity_id, entity_name: data.entity_name };
+    showApp();
+  } catch (err) {
+    errEl.textContent = 'Could not reach the server. Is the API running?';
+  }
+});
+
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  try { await authFetch('/auth/logout', { method: 'POST' }); } catch (e) {}
+  clearToken();
+  showLogin();
+});
+
+// ---------------------------------------------------------------------------
+// Anomalies view
+// ---------------------------------------------------------------------------
+async function fetchEntities() {
+  // Employees aren't authorized to list all entities (and don't need to --
+  // they only ever see their own, already known from login).
+  if (currentUser.role === 'employee') {
+    entityCache = currentUser.entity_id ? { [currentUser.entity_id]: currentUser.entity_name } : {};
+    return;
+  }
+  try {
+    const res = await authFetch(`/entities?active_only=false`);
+    const list = await res.json();
+    entityCache = Object.fromEntries(list.map(e => [e.id, e.name]));
+  } catch (e) { /* handled by authFetch or ignored */ }
+}
+
+async function fetchAnomalies() {
+  const status = document.getElementById('statusFilter').value;
+  const severity = document.getElementById('severityFilter').value;
+  const unit = document.getElementById('unitFilter').value;
+  const params = new URLSearchParams({ limit: '200' });
+  if (status) params.set('status', status);
+  if (severity) params.set('severity', severity);
+  if (unit) params.set('department', unit);
+  if (currentEntityFilter) params.set('entity_id', currentEntityFilter.id);
+  const res = await authFetch(`/anomalies?${params.toString()}`);
+  return res.json();
+}
+
+function sevBadge(sev) { return `<span class="badge sev-${sev}">${sev}</span>`; }
+function stBadge(st) { return `<span class="badge st-${st}">${st.replace('_', ' ')}</span>`; }
+
+// All times are shown in GMT, regardless of the viewer's local timezone.
+function formatGMT(isoString) {
+  const d = new Date(isoString);
+  return d.toLocaleString('en-GB', {
+    timeZone: 'GMT', year: 'numeric', month: 'short', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }) + ' GMT';
+}
+
+// Renders a visit's dwell time (seconds -> "1h 05m" / "3m 12s" / "<1m").
+// null means the collector couldn't determine it (see browser_history_monitor.py).
+function formatDuration(seconds) {
+  if (seconds === null || seconds === undefined) return '&ndash;';
+  if (seconds < 60) return '<1m';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  return h > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`;
+}
+
+// Matches the 0=Monday..6=Sunday convention the backend uses for work_days/weekday.
+const WEEKDAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+// Turns a rule_name like "excessive_failed_logins" into "Excessive Failed Logins".
+function formatRuleName(rule) {
+  return rule.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+// Human-readable labels for the technical field names that show up in an
+// anomaly's "details" -- so the detail page reads as plain information
+// instead of raw JSON.
+const DETAIL_FIELD_LABELS = {
+  local_time: 'Time of activity',
+  weekday: 'Day of the week',
+  work_days: 'Configured working days',
+  work_start: 'Work start time',
+  work_end: 'Work end time',
+  failed_count: 'Failed attempts',
+  threshold: 'Threshold',
+  window_minutes: 'Time window (minutes)',
+  total_mb: 'Data transferred (MB)',
+  total_files: 'Files involved',
+  threshold_mb: 'Threshold (MB)',
+  distance_km: 'Distance (km)',
+  elapsed_hours: 'Time elapsed (hours)',
+  speed_kmh: 'Implied travel speed (km/h)',
+  threshold_kmh: 'Speed threshold (km/h)',
+  previous_event_time: 'Previous activity time',
+  resource: 'Resource accessed',
+  window_days: 'Lookback window (days)',
+  metric: 'Metric measured',
+  value: 'Observed value',
+  mean: "Entity's normal average",
+  stddev: 'Normal variability (std. deviation)',
+  z_score: 'Standard deviations from normal',
+  sample_count: 'Historical samples used',
+};
+
+function formatDetailLabel(key) {
+  return DETAIL_FIELD_LABELS[key] || key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+function formatDetailValue(key, value) {
+  if (key === 'weekday' && typeof value === 'number') {
+    return WEEKDAY_NAMES[value] ?? value;
+  }
+  if (key === 'work_days' && Array.isArray(value)) {
+    return value.map(d => WEEKDAY_NAMES[d] ?? d).join(', ');
+  }
+  if ((key === 'local_time' || key === 'previous_event_time') && typeof value === 'string') {
+    return formatGMT(value);
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'Yes' : 'No';
+  }
+  return value;
+}
+
+// Renders an anomaly's raw "details" as a list of plain-language
+// label/value lines instead of a JSON blob.
+function formatDetailsReadable(details) {
+  if (!details || Object.keys(details).length === 0) {
+    return '<div class="value" style="color:var(--muted)">No additional details for this anomaly.</div>';
+  }
+  return Object.entries(details)
+    .map(([key, value]) => `<div class="value">${formatDetailLabel(key)}: ${formatDetailValue(key, value)}</div>`)
+    .join('');
+}
+
+// Shared between the list rows and the detail page. Once an anomaly is
+// resolved, it's treated as a closed case -- no further triage actions
+// are offered on it anywhere in the dashboard.
+function buildActionsHtml(a) {
+  if (currentUser.role === 'employee') return '';
+  if (a.status === 'resolved') return '';
+  const isAdmin = currentUser.role === 'admin';
+  return `
+    ${a.status !== 'acknowledged' ? `<button onclick="updateStatus(${a.id}, 'acknowledged')">Ack</button>` : ''}
+    ${a.status !== 'resolved' ? `<button onclick="updateStatus(${a.id}, 'resolved')">Resolve</button>` : ''}
+    ${a.status !== 'false_positive' ? `<button onclick="updateStatus(${a.id}, 'false_positive')">False+</button>` : ''}
+    ${isAdmin ? `<button onclick="deleteAnomalyConfirm(${a.id})" class="danger">Delete</button>` : ''}
+  `;
+}
+
+function render(anomalies) {
+  const isEmployee = currentUser.role === 'employee';
+  const entityFilterVal = isEmployee ? '' : document.getElementById('entityFilter').value.trim().toLowerCase();
+  const tbody = document.getElementById('rows');
+  tbody.innerHTML = '';
+
+  let counts = { open: 0, low: 0, medium: 0, high: 0, critical: 0 };
+  anomalies.forEach(a => {
+    if (a.status === 'open') counts.open++;
+    if (a.severity === 'low') counts.low++;
+    if (a.severity === 'medium') counts.medium++;
+    if (a.severity === 'high') counts.high++;
+    if (a.severity === 'critical') counts.critical++;
+  });
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><div class="n">${counts.open}</div><div class="l">Open</div></div>
+    <div class="stat"><div class="n">${counts.low}</div><div class="l">Low</div></div>
+    <div class="stat"><div class="n">${counts.medium}</div><div class="l">Medium</div></div>
+    <div class="stat"><div class="n">${counts.high}</div><div class="l">High</div></div>
+    <div class="stat"><div class="n">${counts.critical}</div><div class="l">Critical</div></div>
+  `;
+
+  const filtered = anomalies.filter(a => {
+    const name = entityCache[a.entity_id] || `#${a.entity_id}`;
+    if (entityFilterVal && !name.toLowerCase().includes(entityFilterVal)) return false;
+    return true;
+  });
+
+  document.getElementById('emptyState').style.display = filtered.length ? 'none' : 'block';
+
+  filtered.forEach(a => {
+    const name = entityCache[a.entity_id] || `#${a.entity_id}`;
+    const tr = document.createElement('tr');
+    tr.className = 'clickable-row';
+    tr.tabIndex = 0;
+    tr.setAttribute('role', 'button');
+    tr.setAttribute('aria-label', `View details for this ${a.severity} severity anomaly`);
+    const time = formatGMT(a.detected_at);
+    const actionsCell = isEmployee ? '' : `<td class="actions">${buildActionsHtml(a)}</td>`;
+    tr.innerHTML = `
+      <td class="time">${time}</td>
+      <td>${name}</td>
+      <td>${formatRuleName(a.rule_name)}</td>
+      <td>${sevBadge(a.severity)}</td>
+      <td>${stBadge(a.status)}</td>
+      ${actionsCell}
+    `;
+    tr.addEventListener('click', (ev) => {
+      if (ev.target.tagName === 'BUTTON') return; // let action buttons handle their own clicks
+      showAnomalyDetail(a);
+    });
+    tr.addEventListener('keydown', (ev) => {
+      if (ev.target.tagName === 'BUTTON') return; // let action buttons handle their own keys
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        showAnomalyDetail(a);
+      }
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+async function updateStatus(id, status) {
+  try {
+    await authFetch(`/anomalies/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, resolved_by: currentUser.username }),
+    });
+    backToAnomalyList();
+    await load();
+  } catch (e) { /* session expiry already handled */ }
+}
+
+async function deleteAnomalyConfirm(id) {
+  if (!confirm('Permanently delete this anomaly? This cannot be undone.')) return;
+  try {
+    await authFetch(`/anomalies/${id}`, { method: 'DELETE' });
+    backToAnomalyList();
+    await load();
+  } catch (e) { /* session expiry already handled */ }
+}
+
+function showAnomalyDetail(a) {
+  const name = entityCache[a.entity_id] || `#${a.entity_id}`;
+  const time = formatGMT(a.detected_at);
+  const detailsHtml = formatDetailsReadable(a.details);
+  const actionsHtml = buildActionsHtml(a);
+
+  document.getElementById('anomalyDetailContent').innerHTML = `
+    <div class="detail-field"><div class="label">Entity</div><div class="value">${name}</div></div>
+    <div class="detail-field"><div class="label">Rule</div><div class="value">${formatRuleName(a.rule_name)}</div></div>
+    <div class="detail-field"><div class="label">Severity</div><div class="value">${sevBadge(a.severity)}</div></div>
+    <div class="detail-field"><div class="label">Status</div><div class="value">${stBadge(a.status)}</div></div>
+    <div class="detail-field"><div class="label">Detected (GMT)</div><div class="value">${time}</div></div>
+    <div class="detail-field"><div class="label">Description</div><div class="value">${a.description || 'No description available.'}</div></div>
+    <div class="detail-field"><div class="label">Additional details</div>${detailsHtml}</div>
+    ${actionsHtml ? `<div class="detail-actions">${actionsHtml}</div>` : ''}
+  `;
+  document.getElementById('anomalyListSubview').style.display = 'none';
+  document.getElementById('anomalyDetailSubview').style.display = 'block';
+}
+
+function backToAnomalyList() {
+  document.getElementById('anomalyDetailSubview').style.display = 'none';
+  document.getElementById('anomalyListSubview').style.display = 'block';
+}
+document.getElementById('backToListBtn').addEventListener('click', backToAnomalyList);
+
+async function load() {
+  document.getElementById('lastUpdated').textContent = 'Loading...';
+  try {
+    const anomalies = await fetchAnomalies();
+    render(anomalies);
+    document.getElementById('lastUpdated').textContent = 'Updated ' + formatGMT(new Date().toISOString());
+  } catch (e) { /* session expiry already handled */ }
+}
+
+document.getElementById('refreshBtn').addEventListener('click', load);
+document.getElementById('statusFilter').addEventListener('change', load);
+document.getElementById('severityFilter').addEventListener('change', load);
+document.getElementById('unitFilter').addEventListener('change', load);
+document.getElementById('entityFilter').addEventListener('input', () => {
+  fetchAnomalies().then(render).catch(() => {});
+});
+
+document.getElementById('backToEntitiesBtn').addEventListener('click', backToEntitySummary);
+
+function showEntityAnomalies(entityId, entityName) {
+  currentEntityFilter = { id: entityId, name: entityName };
+  document.getElementById('anomalyListTitle').textContent = `Anomalies for ${entityName}`;
+  // A single entity is already selected -- the free-text entity search and
+  // per-row entity column are redundant here, so hide it and clear any
+  // stale text so it can't accidentally filter out this entity's own rows.
+  const entityFilterEl = document.getElementById('entityFilter');
+  entityFilterEl.value = '';
+  entityFilterEl.style.display = 'none';
+  document.getElementById('entitySummarySubview').style.display = 'none';
+  document.getElementById('anomalyDetailSubview').style.display = 'none';
+  document.getElementById('anomalyListSubview').style.display = 'block';
+  load();
+}
+
+function backToEntitySummary() {
+  currentEntityFilter = null;
+  document.getElementById('entityFilter').style.display = 'inline-block';
+  document.getElementById('anomalyListSubview').style.display = 'none';
+  document.getElementById('anomalyDetailSubview').style.display = 'none';
+  document.getElementById('entitySummarySubview').style.display = 'block';
+  loadEntitySummary();
+}
+
+async function loadSocialMediaBlockSettings() {
+  try {
+    const res = await authFetch('/entities/social-media-block-settings');
+    const rows = await res.json();
+    renderSocialMediaBlockSettings(rows);
+  } catch (e) { /* ignore */ }
+}
+
+function renderSocialMediaBlockSettings(rows) {
+  const tbody = document.getElementById('socialMediaBlockRows');
+  tbody.innerHTML = '';
+  document.getElementById('socialMediaBlockEmptyState').style.display = rows.length ? 'none' : 'block';
+  const canEdit = currentUser.role === 'admin';
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    const control = canEdit
+      ? `<label class="checkbox-field" style="margin:0;">
+           <input type="checkbox" ${r.social_media_block_enabled ? 'checked' : ''}
+                  onchange="toggleSocialMediaBlock(${r.entity_id}, this.checked)">
+         </label>`
+      : (r.social_media_block_enabled
+          ? '<span class="badge sev-medium">Blocking enabled</span>'
+          : '<span class="badge ent-active">Not blocking</span>');
+    tr.innerHTML = `
+      <td>${r.entity_name}</td>
+      <td>${r.department || ''}</td>
+      <td>${control}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function toggleSocialMediaBlock(entityId, enabled) {
+  try {
+    const res = await authFetch(`/config/${entityId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ social_media_block_enabled: enabled, changed_by: currentUser.username }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.detail || 'Could not update this setting.');
+      await loadSocialMediaBlockSettings(); // revert the checkbox to the real state
+    }
+  } catch (e) {
+    await loadSocialMediaBlockSettings();
+  }
+}
+
+async function loadSocialMediaActivity() {
+  const unit = document.getElementById('socialMediaUnitFilter').value;
+  const params = new URLSearchParams({ limit: '200' });
+  if (unit) params.set('department', unit);
+  document.getElementById('socialMediaLastUpdated').textContent = 'Loading...';
+  try {
+    const res = await authFetch(`/social-media-activity?${params.toString()}`);
+    const rows = await res.json();
+    renderSocialMediaActivity(rows);
+    document.getElementById('socialMediaLastUpdated').textContent = 'Updated ' + formatGMT(new Date().toISOString());
+  } catch (e) { /* session expiry already handled */ }
+}
+
+function renderSocialMediaActivity(rows) {
+  const tbody = document.getElementById('socialMediaRows');
+  tbody.innerHTML = '';
+  document.getElementById('socialMediaEmptyState').style.display = rows.length ? 'none' : 'block';
+  const isAdmin = currentUser.role === 'admin';
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    const hoursBadge = r.during_work_hours
+      ? '<span class="badge sev-medium">During work hours</span>'
+      : '<span class="badge ent-active">Outside work hours</span>';
+    tr.innerHTML = `
+      <td>${r.entity_name}</td>
+      <td>${r.site}</td>
+      <td class="time">${formatGMT(r.event_time)}</td>
+      <td class="time">${r.end_time ? formatGMT(r.end_time) : '&ndash;'}</td>
+      <td>${formatDuration(r.duration_seconds)}</td>
+      <td>${hoursBadge}</td>
+      <td>${isAdmin ? `<button onclick="deleteSocialMediaConfirm('${r.ids.join(',')}')" class="danger">Delete</button>` : ''}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function deleteSocialMediaConfirm(ids) {
+  if (!confirm('Permanently delete this social media activity record? This cannot be undone.')) return;
+  try {
+    await authFetch(`/social-media-activity/${ids}`, { method: 'DELETE' });
+    await loadSocialMediaActivity();
+  } catch (e) { /* session expiry already handled */ }
+}
+
+document.getElementById('socialMediaRefreshBtn').addEventListener('click', loadSocialMediaActivity);
+document.getElementById('socialMediaUnitFilter').addEventListener('change', loadSocialMediaActivity);
+
+async function loadEntitySummary() {
+  const status = document.getElementById('summaryStatusFilter').value;
+  const severity = document.getElementById('summarySeverityFilter').value;
+  const unit = document.getElementById('summaryUnitFilter').value;
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (severity) params.set('severity', severity);
+  if (unit) params.set('department', unit);
+  document.getElementById('summaryLastUpdated').textContent = 'Loading...';
+  try {
+    const res = await authFetch(`/anomalies/by-entity?${params.toString()}`);
+    const rows = await res.json();
+    renderEntitySummary(rows);
+    document.getElementById('summaryLastUpdated').textContent = 'Updated ' + formatGMT(new Date().toISOString());
+  } catch (e) { /* session expiry already handled */ }
+}
+
+function renderEntitySummary(rows) {
+  const tbody = document.getElementById('entitySummaryRows');
+  tbody.innerHTML = '';
+  document.getElementById('entitySummaryEmptyState').style.display = rows.length ? 'none' : 'block';
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.className = 'clickable-row';
+    tr.tabIndex = 0;
+    tr.setAttribute('role', 'button');
+    tr.setAttribute('aria-label', `View anomalies for ${r.entity_name}`);
+    const lastSeen = r.latest_detected_at ? formatGMT(r.latest_detected_at) : '';
+    tr.innerHTML = `
+      <td>${r.entity_name}</td>
+      <td>${r.department || ''}</td>
+      <td>${r.open_count}</td>
+      <td>${r.total_count}</td>
+      <td>${r.highest_severity ? sevBadge(r.highest_severity) : ''}</td>
+      <td class="time">${lastSeen}</td>
+    `;
+    tr.addEventListener('click', () => showEntityAnomalies(r.entity_id, r.entity_name));
+    tr.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        showEntityAnomalies(r.entity_id, r.entity_name);
+      }
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById('summaryRefreshBtn').addEventListener('click', loadEntitySummary);
+document.getElementById('summaryStatusFilter').addEventListener('change', loadEntitySummary);
+document.getElementById('summarySeverityFilter').addEventListener('change', loadEntitySummary);
+document.getElementById('summaryUnitFilter').addEventListener('change', loadEntitySummary);
+
+function refreshCurrentAnomalyView() {
+  if (currentEntityFilter) {
+    load();
+  } else if (document.getElementById('entitySummarySubview').style.display !== 'none') {
+    loadEntitySummary();
+  }
+  // If viewing a single anomaly's detail page, skip auto-refresh so it
+  // doesn't yank the admin back to a list mid-read.
+}
+
+async function init() {
+  populateUnitOptions(document.getElementById('unitFilter'), { includeAllOption: true });
+  populateUnitOptions(document.getElementById('summaryUnitFilter'), { includeAllOption: true });
+  populateUnitOptions(document.getElementById('socialMediaUnitFilter'), { includeAllOption: true });
+  populateUnitOptions(document.getElementById('newEntityDept'), { includeUnassigned: true, includeOther: true });
+  await fetchEntities();
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(refreshCurrentAnomalyView, 15000); // auto-refresh, matches the collector's poll interval
+}
+
+document.getElementById('newEntityDept').addEventListener('change', (e) => {
+  document.getElementById('newEntityDeptOther').style.display = (e.target.value === '__other__') ? 'inline-block' : 'none';
+});
+
+// ---------------------------------------------------------------------------
+// Settings view (admin only) -- every adjustable threshold & working-hours
+// field, editable for the global default or any specific entity.
+// ---------------------------------------------------------------------------
+const CONFIG_FIELDS = [
+  { key: 'timezone', label: 'Timezone', type: 'timezone' },
+  { key: 'work_start', label: 'Work start', type: 'time' },
+  { key: 'work_end', label: 'Work end', type: 'time' },
+  { key: 'work_days', label: 'Work days', type: 'workdays' },
+  { key: 'social_media_block_enabled', label: 'Block social media during working hours', type: 'checkbox' },
+];
+
+// Off-hours, Failed login, and Data transfer each render as a clickable
+// header -- click it to expand a panel showing all four severity range
+// fields (Low/Medium/High/Critical) together, plus the enabled checkbox
+// and any extra fields (like the rolling time window). Collapsed by
+// default so the form isn't overwhelming; every field still exists in the
+// DOM while collapsed, just hidden, so nothing is lost when saving.
+const DETECTOR_GROUPS = [
+  {
+    group: 'off_hours',
+    label: 'Off-hours Detection',
+    enabledKey: 'off_hours_enabled',
+    extraFields: [],
+    tiers: [
+      { key: 'off_hours_low_hours', label: 'Low severity at (hours outside schedule)', step: '0.5' },
+      { key: 'off_hours_medium_hours', label: 'Medium severity at (hours)', step: '0.5' },
+      { key: 'off_hours_high_hours', label: 'High severity at (hours)', step: '0.5' },
+      { key: 'off_hours_critical_hours', label: 'Critical severity at (hours)', step: '0.5' },
+    ],
+  },
+  {
+    group: 'failed_login',
+    label: 'Failed Login Detection',
+    enabledKey: 'failed_login_enabled',
+    extraFields: [],
+    tiers: [
+      { key: 'failed_login_low_threshold', label: 'Low severity at (consecutive count)', step: '1' },
+      { key: 'failed_login_medium_threshold', label: 'Medium severity at (consecutive count)', step: '1' },
+      { key: 'failed_login_high_threshold', label: 'High severity at (consecutive count)', step: '1' },
+      { key: 'failed_login_critical_threshold', label: 'Critical severity at (consecutive count)', step: '1' },
+    ],
+  },
+  {
+    group: 'data_transfer',
+    label: 'Data Transfer Detection',
+    enabledKey: 'data_transfer_enabled',
+    extraFields: [
+      { key: 'data_transfer_window_minutes', label: 'Time window (minutes)', step: '1' },
+    ],
+    tiers: [
+      { key: 'data_transfer_low_mb', label: 'Low severity at (MB)', step: '0.1' },
+      { key: 'data_transfer_medium_mb', label: 'Medium severity at (MB)', step: '0.1' },
+      { key: 'data_transfer_high_mb', label: 'High severity at (MB)', step: '0.1' },
+      { key: 'data_transfer_critical_mb', label: 'Critical severity at (MB)', step: '0.1' },
+    ],
+  },
+];
+
+const SEVERITIES = ['low', 'medium', 'high', 'critical'];
+const WORKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+// Static timezone/offset dataset (sourced from a provided IANA reference
+// list, filtered down to only the zone names Python's zoneinfo on the
+// backend actually recognizes -- about 100 legacy aliases like
+// "US/Eastern" or "Jamaica" were excluded because selecting one would
+// break the off-hours detector with a server error). Offsets here are a
+// fixed snapshot, not live-computed -- a zone that observes daylight
+// saving will show whichever offset was current when this list was
+// generated, not one that updates automatically across the year.
+const TIMEZONE_DATA = [
+  ['Etc/GMT+12', 'GMT-12:00'],
+  ['Etc/GMT+11', 'GMT-11:00'],
+  ['Pacific/Midway', 'GMT-11:00'],
+  ['Pacific/Niue', 'GMT-11:00'],
+  ['Pacific/Pago_Pago', 'GMT-11:00'],
+  ['Pacific/Samoa', 'GMT-11:00'],
+  ['Etc/GMT+10', 'GMT-10:00'],
+  ['HST', 'GMT-10:00'],
+  ['Pacific/Honolulu', 'GMT-10:00'],
+  ['Pacific/Johnston', 'GMT-10:00'],
+  ['Pacific/Rarotonga', 'GMT-10:00'],
+  ['Pacific/Tahiti', 'GMT-10:00'],
+  ['Pacific/Marquesas', 'GMT-10:30'],
+  ['America/Adak', 'GMT-09:00'],
+  ['America/Atka', 'GMT-09:00'],
+  ['Etc/GMT+9', 'GMT-09:00'],
+  ['Pacific/Gambier', 'GMT-09:00'],
+  ['America/Anchorage', 'GMT-08:00'],
+  ['America/Juneau', 'GMT-08:00'],
+  ['America/Metlakatla', 'GMT-08:00'],
+  ['America/Nome', 'GMT-08:00'],
+  ['America/Sitka', 'GMT-08:00'],
+  ['America/Yakutat', 'GMT-08:00'],
+  ['Etc/GMT+8', 'GMT-08:00'],
+  ['Pacific/Pitcairn', 'GMT-08:00'],
+  ['America/Creston', 'GMT-07:00'],
+  ['America/Dawson', 'GMT-07:00'],
+  ['America/Dawson_Creek', 'GMT-07:00'],
+  ['America/Ensenada', 'GMT-07:00'],
+  ['America/Fort_Nelson', 'GMT-07:00'],
+  ['America/Hermosillo', 'GMT-07:00'],
+  ['America/Los_Angeles', 'GMT-07:00'],
+  ['America/Mazatlan', 'GMT-07:00'],
+  ['America/Phoenix', 'GMT-07:00'],
+  ['America/Santa_Isabel', 'GMT-07:00'],
+  ['America/Tijuana', 'GMT-07:00'],
+  ['America/Vancouver', 'GMT-07:00'],
+  ['America/Whitehorse', 'GMT-07:00'],
+  ['Etc/GMT+7', 'GMT-07:00'],
+  ['MST', 'GMT-07:00'],
+  ['PST8PDT', 'GMT-07:00'],
+  ['America/Bahia_Banderas', 'GMT-06:00'],
+  ['America/Belize', 'GMT-06:00'],
+  ['America/Boise', 'GMT-06:00'],
+  ['America/Cambridge_Bay', 'GMT-06:00'],
+  ['America/Chihuahua', 'GMT-06:00'],
+  ['America/Ciudad_Juarez', 'GMT-06:00'],
+  ['America/Costa_Rica', 'GMT-06:00'],
+  ['America/Denver', 'GMT-06:00'],
+  ['America/Edmonton', 'GMT-06:00'],
+  ['America/El_Salvador', 'GMT-06:00'],
+  ['America/Guatemala', 'GMT-06:00'],
+  ['America/Inuvik', 'GMT-06:00'],
+  ['America/Managua', 'GMT-06:00'],
+  ['America/Merida', 'GMT-06:00'],
+  ['America/Mexico_City', 'GMT-06:00'],
+  ['America/Monterrey', 'GMT-06:00'],
+  ['America/Regina', 'GMT-06:00'],
+  ['America/Shiprock', 'GMT-06:00'],
+  ['America/Swift_Current', 'GMT-06:00'],
+  ['America/Tegucigalpa', 'GMT-06:00'],
+  ['America/Yellowknife', 'GMT-06:00'],
+  ['Etc/GMT+6', 'GMT-06:00'],
+  ['MST7MDT', 'GMT-06:00'],
+  ['Pacific/Galapagos', 'GMT-06:00'],
+  ['America/Atikokan', 'GMT-05:00'],
+  ['America/Bogota', 'GMT-05:00'],
+  ['America/Cancun', 'GMT-05:00'],
+  ['America/Cayman', 'GMT-05:00'],
+  ['America/Chicago', 'GMT-05:00'],
+  ['America/Coral_Harbour', 'GMT-05:00'],
+  ['America/Eirunepe', 'GMT-05:00'],
+  ['America/Guayaquil', 'GMT-05:00'],
+  ['America/Indiana/Knox', 'GMT-05:00'],
+  ['America/Indiana/Tell_City', 'GMT-05:00'],
+  ['America/Jamaica', 'GMT-05:00'],
+  ['America/Lima', 'GMT-05:00'],
+  ['America/Matamoros', 'GMT-05:00'],
+  ['America/Menominee', 'GMT-05:00'],
+  ['America/North_Dakota/Beulah', 'GMT-05:00'],
+  ['America/North_Dakota/Center', 'GMT-05:00'],
+  ['America/North_Dakota/New_Salem', 'GMT-05:00'],
+  ['America/Ojinaga', 'GMT-05:00'],
+  ['America/Panama', 'GMT-05:00'],
+  ['America/Porto_Acre', 'GMT-05:00'],
+  ['America/Rainy_River', 'GMT-05:00'],
+  ['America/Rankin_Inlet', 'GMT-05:00'],
+  ['America/Resolute', 'GMT-05:00'],
+  ['America/Rio_Branco', 'GMT-05:00'],
+  ['America/Winnipeg', 'GMT-05:00'],
+  ['CST6CDT', 'GMT-05:00'],
+  ['EST', 'GMT-05:00'],
+  ['Etc/GMT+5', 'GMT-05:00'],
+  ['Pacific/Easter', 'GMT-05:00'],
+  ['America/Anguilla', 'GMT-04:00'],
+  ['America/Antigua', 'GMT-04:00'],
+  ['America/Aruba', 'GMT-04:00'],
+  ['America/Barbados', 'GMT-04:00'],
+  ['America/Blanc-Sablon', 'GMT-04:00'],
+  ['America/Boa_Vista', 'GMT-04:00'],
+  ['America/Campo_Grande', 'GMT-04:00'],
+  ['America/Caracas', 'GMT-04:00'],
+  ['America/Cuiaba', 'GMT-04:00'],
+  ['America/Curacao', 'GMT-04:00'],
+  ['America/Detroit', 'GMT-04:00'],
+  ['America/Dominica', 'GMT-04:00'],
+  ['America/Grand_Turk', 'GMT-04:00'],
+  ['America/Grenada', 'GMT-04:00'],
+  ['America/Guadeloupe', 'GMT-04:00'],
+  ['America/Guyana', 'GMT-04:00'],
+  ['America/Havana', 'GMT-04:00'],
+  ['America/Indiana/Indianapolis', 'GMT-04:00'],
+  ['America/Indiana/Marengo', 'GMT-04:00'],
+  ['America/Indiana/Petersburg', 'GMT-04:00'],
+  ['America/Indiana/Vevay', 'GMT-04:00'],
+  ['America/Indiana/Vincennes', 'GMT-04:00'],
+  ['America/Indiana/Winamac', 'GMT-04:00'],
+  ['America/Iqaluit', 'GMT-04:00'],
+  ['America/Kentucky/Louisville', 'GMT-04:00'],
+  ['America/Kentucky/Monticello', 'GMT-04:00'],
+  ['America/Kralendijk', 'GMT-04:00'],
+  ['America/La_Paz', 'GMT-04:00'],
+  ['America/Lower_Princes', 'GMT-04:00'],
+  ['America/Manaus', 'GMT-04:00'],
+  ['America/Marigot', 'GMT-04:00'],
+  ['America/Martinique', 'GMT-04:00'],
+  ['America/Montreal', 'GMT-04:00'],
+  ['America/Montserrat', 'GMT-04:00'],
+  ['America/Nassau', 'GMT-04:00'],
+  ['America/New_York', 'GMT-04:00'],
+  ['America/Nipigon', 'GMT-04:00'],
+  ['America/Pangnirtung', 'GMT-04:00'],
+  ['America/Port-au-Prince', 'GMT-04:00'],
+  ['America/Port_of_Spain', 'GMT-04:00'],
+  ['America/Porto_Velho', 'GMT-04:00'],
+  ['America/Puerto_Rico', 'GMT-04:00'],
+  ['America/Santo_Domingo', 'GMT-04:00'],
+  ['America/St_Barthelemy', 'GMT-04:00'],
+  ['America/St_Kitts', 'GMT-04:00'],
+  ['America/St_Lucia', 'GMT-04:00'],
+  ['America/St_Thomas', 'GMT-04:00'],
+  ['America/St_Vincent', 'GMT-04:00'],
+  ['America/Thunder_Bay', 'GMT-04:00'],
+  ['America/Toronto', 'GMT-04:00'],
+  ['America/Tortola', 'GMT-04:00'],
+  ['America/Virgin', 'GMT-04:00'],
+  ['EST5EDT', 'GMT-04:00'],
+  ['Etc/GMT+4', 'GMT-04:00'],
+  ['America/Araguaina', 'GMT-03:00'],
+  ['America/Argentina/Buenos_Aires', 'GMT-03:00'],
+  ['America/Argentina/Catamarca', 'GMT-03:00'],
+  ['America/Argentina/Cordoba', 'GMT-03:00'],
+  ['America/Argentina/Jujuy', 'GMT-03:00'],
+  ['America/Argentina/La_Rioja', 'GMT-03:00'],
+  ['America/Argentina/Mendoza', 'GMT-03:00'],
+  ['America/Argentina/Rio_Gallegos', 'GMT-03:00'],
+  ['America/Argentina/Salta', 'GMT-03:00'],
+  ['America/Argentina/San_Juan', 'GMT-03:00'],
+  ['America/Argentina/San_Luis', 'GMT-03:00'],
+  ['America/Argentina/Tucuman', 'GMT-03:00'],
+  ['America/Argentina/Ushuaia', 'GMT-03:00'],
+  ['America/Asuncion', 'GMT-03:00'],
+  ['America/Bahia', 'GMT-03:00'],
+  ['America/Belem', 'GMT-03:00'],
+  ['America/Cayenne', 'GMT-03:00'],
+  ['America/Coyhaique', 'GMT-03:00'],
+  ['America/Fortaleza', 'GMT-03:00'],
+  ['America/Glace_Bay', 'GMT-03:00'],
+  ['America/Goose_Bay', 'GMT-03:00'],
+  ['America/Halifax', 'GMT-03:00'],
+  ['America/Maceio', 'GMT-03:00'],
+  ['America/Moncton', 'GMT-03:00'],
+  ['America/Montevideo', 'GMT-03:00'],
+  ['America/Paramaribo', 'GMT-03:00'],
+  ['America/Punta_Arenas', 'GMT-03:00'],
+  ['America/Recife', 'GMT-03:00'],
+  ['America/Santarem', 'GMT-03:00'],
+  ['America/Santiago', 'GMT-03:00'],
+  ['America/Sao_Paulo', 'GMT-03:00'],
+  ['America/Thule', 'GMT-03:00'],
+  ['Antarctica/Palmer', 'GMT-03:00'],
+  ['Antarctica/Rothera', 'GMT-03:00'],
+  ['Atlantic/Bermuda', 'GMT-03:00'],
+  ['Atlantic/Stanley', 'GMT-03:00'],
+  ['Etc/GMT+3', 'GMT-03:00'],
+  ['America/St_Johns', 'GMT-03:30'],
+  ['America/Miquelon', 'GMT-02:00'],
+  ['America/Noronha', 'GMT-02:00'],
+  ['Atlantic/South_Georgia', 'GMT-02:00'],
+  ['Etc/GMT+2', 'GMT-02:00'],
+  ['America/Nuuk', 'GMT-01:00'],
+  ['America/Scoresbysund', 'GMT-01:00'],
+  ['Atlantic/Cape_Verde', 'GMT-01:00'],
+  ['Etc/GMT+1', 'GMT-01:00'],
+  ['Africa/Abidjan', 'GMT+00:00'],
+  ['Africa/Accra', 'GMT+00:00'],
+  ['Africa/Bamako', 'GMT+00:00'],
+  ['Africa/Banjul', 'GMT+00:00'],
+  ['Africa/Bissau', 'GMT+00:00'],
+  ['Africa/Conakry', 'GMT+00:00'],
+  ['Africa/Dakar', 'GMT+00:00'],
+  ['Africa/Freetown', 'GMT+00:00'],
+  ['Africa/Lome', 'GMT+00:00'],
+  ['Africa/Monrovia', 'GMT+00:00'],
+  ['Africa/Nouakchott', 'GMT+00:00'],
+  ['Africa/Ouagadougou', 'GMT+00:00'],
+  ['Africa/Sao_Tome', 'GMT+00:00'],
+  ['Africa/Timbuktu', 'GMT+00:00'],
+  ['America/Danmarkshavn', 'GMT+00:00'],
+  ['Atlantic/Azores', 'GMT+00:00'],
+  ['Atlantic/Reykjavik', 'GMT+00:00'],
+  ['Atlantic/St_Helena', 'GMT+00:00'],
+  ['Etc/GMT', 'GMT+00:00'],
+  ['Etc/GMT+0', 'GMT+00:00'],
+  ['Etc/GMT-0', 'GMT+00:00'],
+  ['Etc/GMT0', 'GMT+00:00'],
+  ['Etc/Greenwich', 'GMT+00:00'],
+  ['Etc/UCT', 'GMT+00:00'],
+  ['Etc/UTC', 'GMT+00:00'],
+  ['Etc/Universal', 'GMT+00:00'],
+  ['Etc/Zulu', 'GMT+00:00'],
+  ['Factory', 'GMT+00:00'],
+  ['GMT', 'GMT+00:00'],
+  ['UTC', 'GMT+00:00'],
+  ['localtime', 'GMT+00:00'],
+  ['Africa/Algiers', 'GMT+01:00'],
+  ['Africa/Bangui', 'GMT+01:00'],
+  ['Africa/Brazzaville', 'GMT+01:00'],
+  ['Africa/Casablanca', 'GMT+01:00'],
+  ['Africa/Douala', 'GMT+01:00'],
+  ['Africa/El_Aaiun', 'GMT+01:00'],
+  ['Africa/Kinshasa', 'GMT+01:00'],
+  ['Africa/Lagos', 'GMT+01:00'],
+  ['Africa/Libreville', 'GMT+01:00'],
+  ['Africa/Luanda', 'GMT+01:00'],
+  ['Africa/Malabo', 'GMT+01:00'],
+  ['Africa/Ndjamena', 'GMT+01:00'],
+  ['Africa/Niamey', 'GMT+01:00'],
+  ['Africa/Porto-Novo', 'GMT+01:00'],
+  ['Africa/Tunis', 'GMT+01:00'],
+  ['Atlantic/Canary', 'GMT+01:00'],
+  ['Atlantic/Faroe', 'GMT+01:00'],
+  ['Atlantic/Madeira', 'GMT+01:00'],
+  ['Etc/GMT-1', 'GMT+01:00'],
+  ['Europe/Belfast', 'GMT+01:00'],
+  ['Europe/Dublin', 'GMT+01:00'],
+  ['Europe/Guernsey', 'GMT+01:00'],
+  ['Europe/Isle_of_Man', 'GMT+01:00'],
+  ['Europe/Jersey', 'GMT+01:00'],
+  ['Europe/Lisbon', 'GMT+01:00'],
+  ['Europe/London', 'GMT+01:00'],
+  ['WET', 'GMT+01:00'],
+  ['Africa/Blantyre', 'GMT+02:00'],
+  ['Africa/Bujumbura', 'GMT+02:00'],
+  ['Africa/Ceuta', 'GMT+02:00'],
+  ['Africa/Gaborone', 'GMT+02:00'],
+  ['Africa/Harare', 'GMT+02:00'],
+  ['Africa/Johannesburg', 'GMT+02:00'],
+  ['Africa/Juba', 'GMT+02:00'],
+  ['Africa/Khartoum', 'GMT+02:00'],
+  ['Africa/Kigali', 'GMT+02:00'],
+  ['Africa/Lubumbashi', 'GMT+02:00'],
+  ['Africa/Lusaka', 'GMT+02:00'],
+  ['Africa/Maputo', 'GMT+02:00'],
+  ['Africa/Maseru', 'GMT+02:00'],
+  ['Africa/Mbabane', 'GMT+02:00'],
+  ['Africa/Tripoli', 'GMT+02:00'],
+  ['Africa/Windhoek', 'GMT+02:00'],
+  ['Antarctica/Troll', 'GMT+02:00'],
+  ['Arctic/Longyearbyen', 'GMT+02:00'],
+  ['Atlantic/Jan_Mayen', 'GMT+02:00'],
+  ['CET', 'GMT+02:00'],
+  ['Etc/GMT-2', 'GMT+02:00'],
+  ['Europe/Amsterdam', 'GMT+02:00'],
+  ['Europe/Andorra', 'GMT+02:00'],
+  ['Europe/Belgrade', 'GMT+02:00'],
+  ['Europe/Berlin', 'GMT+02:00'],
+  ['Europe/Bratislava', 'GMT+02:00'],
+  ['Europe/Brussels', 'GMT+02:00'],
+  ['Europe/Budapest', 'GMT+02:00'],
+  ['Europe/Busingen', 'GMT+02:00'],
+  ['Europe/Copenhagen', 'GMT+02:00'],
+  ['Europe/Gibraltar', 'GMT+02:00'],
+  ['Europe/Kaliningrad', 'GMT+02:00'],
+  ['Europe/Ljubljana', 'GMT+02:00'],
+  ['Europe/Luxembourg', 'GMT+02:00'],
+  ['Europe/Madrid', 'GMT+02:00'],
+  ['Europe/Malta', 'GMT+02:00'],
+  ['Europe/Monaco', 'GMT+02:00'],
+  ['Europe/Oslo', 'GMT+02:00'],
+  ['Europe/Paris', 'GMT+02:00'],
+  ['Europe/Podgorica', 'GMT+02:00'],
+  ['Europe/Prague', 'GMT+02:00'],
+  ['Europe/Rome', 'GMT+02:00'],
+  ['Europe/San_Marino', 'GMT+02:00'],
+  ['Europe/Sarajevo', 'GMT+02:00'],
+  ['Europe/Skopje', 'GMT+02:00'],
+  ['Europe/Stockholm', 'GMT+02:00'],
+  ['Europe/Tirane', 'GMT+02:00'],
+  ['Europe/Vaduz', 'GMT+02:00'],
+  ['Europe/Vatican', 'GMT+02:00'],
+  ['Europe/Vienna', 'GMT+02:00'],
+  ['Europe/Warsaw', 'GMT+02:00'],
+  ['Europe/Zagreb', 'GMT+02:00'],
+  ['Europe/Zurich', 'GMT+02:00'],
+  ['MET', 'GMT+02:00'],
+  ['Africa/Addis_Ababa', 'GMT+03:00'],
+  ['Africa/Asmara', 'GMT+03:00'],
+  ['Africa/Cairo', 'GMT+03:00'],
+  ['Africa/Dar_es_Salaam', 'GMT+03:00'],
+  ['Africa/Djibouti', 'GMT+03:00'],
+  ['Africa/Kampala', 'GMT+03:00'],
+  ['Africa/Mogadishu', 'GMT+03:00'],
+  ['Africa/Nairobi', 'GMT+03:00'],
+  ['Antarctica/Syowa', 'GMT+03:00'],
+  ['Asia/Aden', 'GMT+03:00'],
+  ['Asia/Amman', 'GMT+03:00'],
+  ['Asia/Baghdad', 'GMT+03:00'],
+  ['Asia/Bahrain', 'GMT+03:00'],
+  ['Asia/Beirut', 'GMT+03:00'],
+  ['Asia/Damascus', 'GMT+03:00'],
+  ['Asia/Famagusta', 'GMT+03:00'],
+  ['Asia/Gaza', 'GMT+03:00'],
+  ['Asia/Hebron', 'GMT+03:00'],
+  ['Asia/Istanbul', 'GMT+03:00'],
+  ['Asia/Jerusalem', 'GMT+03:00'],
+  ['Asia/Kuwait', 'GMT+03:00'],
+  ['Asia/Nicosia', 'GMT+03:00'],
+  ['Asia/Qatar', 'GMT+03:00'],
+  ['Asia/Riyadh', 'GMT+03:00'],
+  ['Asia/Tel_Aviv', 'GMT+03:00'],
+  ['EET', 'GMT+03:00'],
+  ['Etc/GMT-3', 'GMT+03:00'],
+  ['Europe/Athens', 'GMT+03:00'],
+  ['Europe/Bucharest', 'GMT+03:00'],
+  ['Europe/Chisinau', 'GMT+03:00'],
+  ['Europe/Helsinki', 'GMT+03:00'],
+  ['Europe/Istanbul', 'GMT+03:00'],
+  ['Europe/Kirov', 'GMT+03:00'],
+  ['Europe/Kyiv', 'GMT+03:00'],
+  ['Europe/Mariehamn', 'GMT+03:00'],
+  ['Europe/Minsk', 'GMT+03:00'],
+  ['Europe/Moscow', 'GMT+03:00'],
+  ['Europe/Nicosia', 'GMT+03:00'],
+  ['Europe/Riga', 'GMT+03:00'],
+  ['Europe/Simferopol', 'GMT+03:00'],
+  ['Europe/Sofia', 'GMT+03:00'],
+  ['Europe/Tallinn', 'GMT+03:00'],
+  ['Europe/Tiraspol', 'GMT+03:00'],
+  ['Europe/Vilnius', 'GMT+03:00'],
+  ['Europe/Volgograd', 'GMT+03:00'],
+  ['Indian/Antananarivo', 'GMT+03:00'],
+  ['Indian/Comoro', 'GMT+03:00'],
+  ['Indian/Mayotte', 'GMT+03:00'],
+  ['Asia/Tehran', 'GMT+03:30'],
+  ['Asia/Baku', 'GMT+04:00'],
+  ['Asia/Dubai', 'GMT+04:00'],
+  ['Asia/Muscat', 'GMT+04:00'],
+  ['Asia/Tbilisi', 'GMT+04:00'],
+  ['Asia/Yerevan', 'GMT+04:00'],
+  ['Etc/GMT-4', 'GMT+04:00'],
+  ['Europe/Astrakhan', 'GMT+04:00'],
+  ['Europe/Samara', 'GMT+04:00'],
+  ['Europe/Saratov', 'GMT+04:00'],
+  ['Europe/Ulyanovsk', 'GMT+04:00'],
+  ['Indian/Mahe', 'GMT+04:00'],
+  ['Indian/Mauritius', 'GMT+04:00'],
+  ['Indian/Reunion', 'GMT+04:00'],
+  ['Asia/Kabul', 'GMT+04:30'],
+  ['Antarctica/Mawson', 'GMT+05:00'],
+  ['Antarctica/Vostok', 'GMT+05:00'],
+  ['Asia/Almaty', 'GMT+05:00'],
+  ['Asia/Aqtau', 'GMT+05:00'],
+  ['Asia/Aqtobe', 'GMT+05:00'],
+  ['Asia/Ashgabat', 'GMT+05:00'],
+  ['Asia/Atyrau', 'GMT+05:00'],
+  ['Asia/Dushanbe', 'GMT+05:00'],
+  ['Asia/Karachi', 'GMT+05:00'],
+  ['Asia/Oral', 'GMT+05:00'],
+  ['Asia/Qostanay', 'GMT+05:00'],
+  ['Asia/Qyzylorda', 'GMT+05:00'],
+  ['Asia/Samarkand', 'GMT+05:00'],
+  ['Asia/Tashkent', 'GMT+05:00'],
+  ['Asia/Yekaterinburg', 'GMT+05:00'],
+  ['Etc/GMT-5', 'GMT+05:00'],
+  ['Indian/Kerguelen', 'GMT+05:00'],
+  ['Indian/Maldives', 'GMT+05:00'],
+  ['Asia/Colombo', 'GMT+05:30'],
+  ['Asia/Kolkata', 'GMT+05:30'],
+  ['Asia/Kathmandu', 'GMT+05:45'],
+  ['Asia/Bishkek', 'GMT+06:00'],
+  ['Asia/Dhaka', 'GMT+06:00'],
+  ['Asia/Kashgar', 'GMT+06:00'],
+  ['Asia/Omsk', 'GMT+06:00'],
+  ['Asia/Thimphu', 'GMT+06:00'],
+  ['Asia/Urumqi', 'GMT+06:00'],
+  ['Etc/GMT-6', 'GMT+06:00'],
+  ['Indian/Chagos', 'GMT+06:00'],
+  ['Asia/Yangon', 'GMT+06:30'],
+  ['Indian/Cocos', 'GMT+06:30'],
+  ['Antarctica/Davis', 'GMT+07:00'],
+  ['Asia/Bangkok', 'GMT+07:00'],
+  ['Asia/Barnaul', 'GMT+07:00'],
+  ['Asia/Ho_Chi_Minh', 'GMT+07:00'],
+  ['Asia/Hovd', 'GMT+07:00'],
+  ['Asia/Jakarta', 'GMT+07:00'],
+  ['Asia/Krasnoyarsk', 'GMT+07:00'],
+  ['Asia/Novokuznetsk', 'GMT+07:00'],
+  ['Asia/Novosibirsk', 'GMT+07:00'],
+  ['Asia/Phnom_Penh', 'GMT+07:00'],
+  ['Asia/Pontianak', 'GMT+07:00'],
+  ['Asia/Tomsk', 'GMT+07:00'],
+  ['Asia/Vientiane', 'GMT+07:00'],
+  ['Etc/GMT-7', 'GMT+07:00'],
+  ['Indian/Christmas', 'GMT+07:00'],
+  ['Antarctica/Casey', 'GMT+08:00'],
+  ['Asia/Brunei', 'GMT+08:00'],
+  ['Asia/Choibalsan', 'GMT+08:00'],
+  ['Asia/Chongqing', 'GMT+08:00'],
+  ['Asia/Harbin', 'GMT+08:00'],
+  ['Asia/Hong_Kong', 'GMT+08:00'],
+  ['Asia/Irkutsk', 'GMT+08:00'],
+  ['Asia/Kuala_Lumpur', 'GMT+08:00'],
+  ['Asia/Kuching', 'GMT+08:00'],
+  ['Asia/Macau', 'GMT+08:00'],
+  ['Asia/Makassar', 'GMT+08:00'],
+  ['Asia/Manila', 'GMT+08:00'],
+  ['Asia/Shanghai', 'GMT+08:00'],
+  ['Asia/Singapore', 'GMT+08:00'],
+  ['Asia/Taipei', 'GMT+08:00'],
+  ['Asia/Ulaanbaatar', 'GMT+08:00'],
+  ['Australia/Perth', 'GMT+08:00'],
+  ['Etc/GMT-8', 'GMT+08:00'],
+  ['Australia/Eucla', 'GMT+08:45'],
+  ['Asia/Chita', 'GMT+09:00'],
+  ['Asia/Dili', 'GMT+09:00'],
+  ['Asia/Jayapura', 'GMT+09:00'],
+  ['Asia/Khandyga', 'GMT+09:00'],
+  ['Asia/Pyongyang', 'GMT+09:00'],
+  ['Asia/Seoul', 'GMT+09:00'],
+  ['Asia/Tokyo', 'GMT+09:00'],
+  ['Asia/Yakutsk', 'GMT+09:00'],
+  ['Etc/GMT-9', 'GMT+09:00'],
+  ['Pacific/Palau', 'GMT+09:00'],
+  ['Australia/Adelaide', 'GMT+09:30'],
+  ['Australia/Broken_Hill', 'GMT+09:30'],
+  ['Australia/Darwin', 'GMT+09:30'],
+  ['Australia/Yancowinna', 'GMT+09:30'],
+  ['Antarctica/DumontDUrville', 'GMT+10:00'],
+  ['Antarctica/Macquarie', 'GMT+10:00'],
+  ['Asia/Ust-Nera', 'GMT+10:00'],
+  ['Asia/Vladivostok', 'GMT+10:00'],
+  ['Australia/Brisbane', 'GMT+10:00'],
+  ['Australia/Canberra', 'GMT+10:00'],
+  ['Australia/Currie', 'GMT+10:00'],
+  ['Australia/Hobart', 'GMT+10:00'],
+  ['Australia/Lindeman', 'GMT+10:00'],
+  ['Australia/Melbourne', 'GMT+10:00'],
+  ['Australia/Sydney', 'GMT+10:00'],
+  ['Etc/GMT-10', 'GMT+10:00'],
+  ['Pacific/Chuuk', 'GMT+10:00'],
+  ['Pacific/Guam', 'GMT+10:00'],
+  ['Pacific/Port_Moresby', 'GMT+10:00'],
+  ['Pacific/Saipan', 'GMT+10:00'],
+  ['Pacific/Yap', 'GMT+10:00'],
+  ['Australia/Lord_Howe', 'GMT+10:30'],
+  ['Asia/Magadan', 'GMT+11:00'],
+  ['Asia/Sakhalin', 'GMT+11:00'],
+  ['Asia/Srednekolymsk', 'GMT+11:00'],
+  ['Etc/GMT-11', 'GMT+11:00'],
+  ['Pacific/Bougainville', 'GMT+11:00'],
+  ['Pacific/Efate', 'GMT+11:00'],
+  ['Pacific/Guadalcanal', 'GMT+11:00'],
+  ['Pacific/Kosrae', 'GMT+11:00'],
+  ['Pacific/Norfolk', 'GMT+11:00'],
+  ['Pacific/Noumea', 'GMT+11:00'],
+  ['Pacific/Pohnpei', 'GMT+11:00'],
+  ['Antarctica/McMurdo', 'GMT+12:00'],
+  ['Asia/Anadyr', 'GMT+12:00'],
+  ['Asia/Kamchatka', 'GMT+12:00'],
+  ['Etc/GMT-12', 'GMT+12:00'],
+  ['Pacific/Auckland', 'GMT+12:00'],
+  ['Pacific/Fiji', 'GMT+12:00'],
+  ['Pacific/Funafuti', 'GMT+12:00'],
+  ['Pacific/Kwajalein', 'GMT+12:00'],
+  ['Pacific/Majuro', 'GMT+12:00'],
+  ['Pacific/Nauru', 'GMT+12:00'],
+  ['Pacific/Tarawa', 'GMT+12:00'],
+  ['Pacific/Wake', 'GMT+12:00'],
+  ['Pacific/Wallis', 'GMT+12:00'],
+  ['Pacific/Chatham', 'GMT+12:45'],
+  ['Etc/GMT-13', 'GMT+13:00'],
+  ['Pacific/Apia', 'GMT+13:00'],
+  ['Pacific/Fakaofo', 'GMT+13:00'],
+  ['Pacific/Kanton', 'GMT+13:00'],
+  ['Pacific/Tongatapu', 'GMT+13:00'],
+  ['Etc/GMT-14', 'GMT+14:00'],
+  ['Pacific/Kiritimati', 'GMT+14:00'],
+];
+function getAvailableTimezones() {
+  const zones = TIMEZONE_DATA.map(([zone]) => zone);
+  // Africa/Accra is this system's default (Ghana, GMT+0, no DST). GMT/UTC
+  // are also valid, commonly used zone names -- pin all three at the top.
+  const pinned = ['Africa/Accra', 'GMT', 'UTC'];
+  const rest = zones.filter(z => !pinned.includes(z));
+  return [...pinned, ...rest];
+}
+
+const TIMEZONE_OFFSETS = Object.fromEntries(TIMEZONE_DATA);
+
+// Common, everyday names for the zones people actually look for -- not
+// exhaustive (~500 zones exist), just enough that the most-used ones read
+// as "Eastern Time" rather than "America/New_York".
+const FRIENDLY_TZ_NAMES = {
+  'GMT': 'Greenwich Mean Time', 'UTC': 'Coordinated Universal Time',
+  'Africa/Accra': 'Ghana Time', 'Africa/Cairo': 'Egypt Time', 'Africa/Johannesburg': 'South Africa Time',
+  'Africa/Lagos': 'West Africa Time', 'Africa/Nairobi': 'East Africa Time',
+  'America/New_York': 'Eastern Time', 'America/Chicago': 'Central Time', 'America/Denver': 'Mountain Time',
+  'America/Los_Angeles': 'Pacific Time', 'America/Anchorage': 'Alaska Time',
+  'America/Sao_Paulo': 'Brasilia Time', 'America/Mexico_City': 'Mexico City Time', 'America/Bogota': 'Colombia Time',
+  'America/Toronto': 'Eastern Time (Canada)',
+  'Europe/London': 'British Time', 'Europe/Paris': 'Central European Time', 'Europe/Berlin': 'Central European Time',
+  'Europe/Madrid': 'Central European Time', 'Europe/Rome': 'Central European Time',
+  'Europe/Amsterdam': 'Central European Time', 'Europe/Moscow': 'Moscow Time', 'Europe/Istanbul': 'Turkey Time',
+  'Asia/Dubai': 'Gulf Standard Time', 'Asia/Kolkata': 'India Standard Time', 'Asia/Bangkok': 'Indochina Time',
+  'Asia/Jakarta': 'Western Indonesia Time', 'Asia/Shanghai': 'China Standard Time', 'Asia/Hong_Kong': 'Hong Kong Time',
+  'Asia/Singapore': 'Singapore Time', 'Asia/Tokyo': 'Japan Standard Time', 'Asia/Seoul': 'Korea Standard Time',
+  'Asia/Manila': 'Philippine Time', 'Asia/Istanbul': 'Turkey Time',
+  'Australia/Sydney': 'Australian Eastern Time', 'Australia/Perth': 'Australian Western Time',
+  'Pacific/Auckland': 'New Zealand Time', 'Pacific/Honolulu': 'Hawaii Time',
+};
+
+// Builds a label like "Eastern Time - America/New_York (GMT-04:00)", or
+// just "Africa/Nairobi (GMT+03:00)" for zones without a curated friendly name.
+function formatTimezoneLabel(zone) {
+  const offset = TIMEZONE_OFFSETS[zone];
+  const friendly = FRIENDLY_TZ_NAMES[zone];
+  const offsetSuffix = offset ? ` (${offset})` : '';
+  return friendly ? `${friendly} - ${zone}${offsetSuffix}` : `${zone}${offsetSuffix}`;
+}
+
+async function loadSettingsTab() {
+  await refreshConfigEntityDropdown();
+  await loadConfigInto(document.getElementById('configEntitySelect').value);
+  await refreshPendingBadge();
+}
+
+async function refreshPendingBadge() {
+  try {
+    const res = await authFetch('/users');
+    const list = await res.json();
+    const pendingCount = list.filter(u => !u.is_approved).length;
+    updatePendingBadge(pendingCount);
+  } catch (e) { /* ignore */ }
+}
+
+async function refreshConfigEntityDropdown() {
+  const select = document.getElementById('configEntitySelect');
+  const previousValue = select.value;
+  select.innerHTML = '<option value="">Global Default</option>';
+  try {
+    const res = await authFetch('/entities?active_only=false');
+    const list = await res.json();
+    list.forEach(e => {
+      const opt = document.createElement('option');
+      opt.value = e.id;
+      opt.textContent = e.name + (e.is_active ? '' : ' (restricted)');
+      select.appendChild(opt);
+    });
+    if (Array.from(select.options).some(o => o.value === previousValue)) {
+      select.value = previousValue;
+    }
+  } catch (e) { /* ignore */ }
+}
+
+document.getElementById('settingsSubThresholds').addEventListener('click', () => switchSettingsSubtab('thresholds'));
+document.getElementById('settingsSubEntities').addEventListener('click', () => switchSettingsSubtab('entities'));
+document.getElementById('settingsSubPending').addEventListener('click', () => switchSettingsSubtab('pending'));
+
+function switchSettingsSubtab(tab) {
+  document.getElementById('settingsSubThresholds').classList.toggle('active', tab === 'thresholds');
+  document.getElementById('settingsSubEntities').classList.toggle('active', tab === 'entities');
+  document.getElementById('settingsSubPending').classList.toggle('active', tab === 'pending');
+  document.getElementById('thresholdsSubview').style.display = (tab === 'thresholds') ? 'block' : 'none';
+  document.getElementById('entitiesSubview').style.display = (tab === 'entities') ? 'block' : 'none';
+  document.getElementById('pendingSubview').style.display = (tab === 'pending') ? 'block' : 'none';
+  if (tab === 'entities') loadEntitiesManagement();
+  if (tab === 'pending') loadPendingAnalysts();
+}
+
+async function loadPendingAnalysts() {
+  try {
+    const res = await authFetch('/users');
+    const list = await res.json();
+    renderPendingTable(list);
+    const pendingCount = list.filter(u => !u.is_approved).length;
+    updatePendingBadge(pendingCount);
+  } catch (e) { /* ignore */ }
+}
+
+function updatePendingBadge(count) {
+  const badge = document.getElementById('pendingCount');
+  if (count > 0) {
+    badge.textContent = count;
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function renderPendingTable(list) {
+  const tbody = document.getElementById('pendingRows');
+  tbody.innerHTML = '';
+  document.getElementById('pendingEmptyState').style.display = list.length ? 'none' : 'block';
+  list.forEach(u => {
+    const tr = document.createElement('tr');
+    const requested = formatGMT(u.created_at);
+    const safeUsername = u.username.replace(/'/g, "\\'");
+    const isPending = !u.is_approved;
+    const statusBadges = [
+      isPending
+        ? '<span class="badge ent-restricted">Pending</span>'
+        : '<span class="badge ent-active">Approved</span>',
+      u.must_change_password ? '<span class="badge ent-restricted">Must change password</span>' : '',
+    ].filter(Boolean).join(' ');
+    const isSelf = u.username === currentUser.username;
+    tr.innerHTML = `
+      <td>${u.username}</td>
+      <td>${u.email || ''}</td>
+      <td>${u.role}</td>
+      <td>${statusBadges}</td>
+      <td class="time">${requested}</td>
+      <td class="actions">
+        ${isPending ? `<button onclick="approveUser('${safeUsername}')">Approve</button>` : ''}
+        <button onclick="resetUserPasswordConfirm('${safeUsername}')">Reset Password</button>
+        ${isSelf ? '' : `<button onclick="deleteUserConfirm('${safeUsername}')" class="danger">Delete</button>`}
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function resetUserPasswordConfirm(username) {
+  if (!confirm(`Reset the password for "${username}" to the system default? They'll need to set a new one on next login.`)) return;
+  try {
+    const res = await authFetch(`/users/${encodeURIComponent(username)}/reset-password`, { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.detail || 'Could not reset the password.');
+      return;
+    }
+    const data = await res.json();
+    alert(`Password for "${username}" reset to: ${data.default_password}\n\nThey'll be required to set a new password on next login.`);
+    await loadPendingAnalysts();
+  } catch (e) { /* session expiry already handled */ }
+}
+
+document.getElementById('resetAllPasswordsBtn').addEventListener('click', async () => {
+  const firstConfirm = confirm(
+    'This resets EVERY dashboard login (including your own) to the system default password and signs everyone out. Continue?'
+  );
+  if (!firstConfirm) return;
+  const secondConfirm = confirm('Are you absolutely sure? This cannot be undone.');
+  if (!secondConfirm) return;
+
+  const note = document.getElementById('resetAllNote');
+  note.textContent = '';
+  try {
+    const res = await authFetch('/users/reset-all-passwords', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: true }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      note.style.color = 'var(--critical)';
+      note.textContent = err.detail || 'Could not reset passwords.';
+      return;
+    }
+    const data = await res.json();
+    alert(`Reset ${data.reset_count} account(s) to the default password: ${data.default_password}\n\nEveryone (including you) has been signed out and must log in with this password, then set their own.`);
+    clearToken();
+    showLogin();
+  } catch (e) { /* ignore */ }
+});
+
+async function approveUser(username) {
+  try {
+    await authFetch(`/users/${encodeURIComponent(username)}/approve`, { method: 'POST' });
+    await loadPendingAnalysts();
+  } catch (e) { /* ignore */ }
+}
+
+async function deleteUserConfirm(username) {
+  if (!confirm(`Permanently delete the login for "${username}"? This removes them from the database and cannot be undone.`)) return;
+  try {
+    await authFetch(`/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
+    await loadPendingAnalysts();
+  } catch (e) { /* ignore */ }
+}
+
+async function loadEntitiesManagement() {
+  try {
+    const res = await authFetch('/entities?active_only=false');
+    const list = await res.json();
+    renderEntitiesTable(list);
+  } catch (e) { /* ignore */ }
+  await loadMergeHistory();
+}
+
+function renderEntitiesTable(entities) {
+  const tbody = document.getElementById('entityRows');
+  tbody.innerHTML = '';
+  entities.forEach(e => {
+    const tr = document.createElement('tr');
+    const statusBadge = e.is_active
+      ? '<span class="badge ent-active">Active</span>'
+      : '<span class="badge ent-restricted">Restricted</span>';
+    const safeName = e.name.replace(/'/g, "\\'");
+    const currentDept = e.department || '';
+    const isKnownUnit = UNITS.includes(currentDept);
+    const unitOptions = [
+      `<option value="" ${currentDept === '' ? 'selected' : ''}>Unassigned</option>`,
+      ...UNITS.map(u => `<option value="${u}" ${u === currentDept ? 'selected' : ''}>${u}</option>`),
+      !isKnownUnit && currentDept ? `<option value="${currentDept}" selected>${currentDept} (custom)</option>` : '',
+    ].join('');
+    const mergeOptions = ['<option value="">Choose a system...</option>']
+      .concat(entities.filter(other => other.id !== e.id).map(other => `<option value="${other.id}">${other.name}</option>`))
+      .join('');
+    tr.innerHTML = `
+      <td>${e.name}</td>
+      <td>${e.entity_type}</td>
+      <td><select onchange="reassignEntityUnit(${e.id}, this.value)">${unitOptions}</select></td>
+      <td>${statusBadge}</td>
+      <td>
+        <select id="mergeTarget_${e.id}">${mergeOptions}</select>
+        <button onclick="mergeEntityConfirm(${e.id}, '${safeName}')">Merge</button>
+      </td>
+      <td class="actions">
+        <button onclick="toggleEntityActive(${e.id}, ${e.is_active})">${e.is_active ? 'Restrict' : 'Unrestrict'}</button>
+        <button onclick="deleteEntityConfirm(${e.id}, '${safeName}')" class="danger">Delete</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function mergeEntityConfirm(duplicateId, duplicateName) {
+  const select = document.getElementById(`mergeTarget_${duplicateId}`);
+  const keepId = select.value;
+  if (!keepId) {
+    alert('Choose which system to merge this into first.');
+    return;
+  }
+  const keepName = select.options[select.selectedIndex].textContent;
+  if (!confirm(
+    `Merge "${duplicateName}" into "${keepName}"? All of "${duplicateName}"'s events and anomalies move to `
+    + `"${keepName}", and "${duplicateName}" is then deleted. Future events reported under the name `
+    + `"${duplicateName}" will automatically be attributed to "${keepName}" instead. `
+    + `This can be undone afterward from the Merge History list below if needed.`
+  )) return;
+  try {
+    const res = await authFetch(`/entities/${keepId}/merge/${duplicateId}`, { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.detail || 'Could not merge these systems.');
+      return;
+    }
+    await loadEntitiesManagement();
+    await refreshConfigEntityDropdown();
+  } catch (e) { /* ignore */ }
+}
+
+async function loadMergeHistory() {
+  try {
+    const res = await authFetch('/entities/merges?active_only=false');
+    const list = await res.json();
+    renderMergeHistory(list);
+  } catch (e) { /* ignore */ }
+}
+
+function renderMergeHistory(merges) {
+  const tbody = document.getElementById('mergeHistoryRows');
+  tbody.innerHTML = '';
+  document.getElementById('mergeHistoryEmptyState').style.display = merges.length ? 'none' : 'block';
+  merges.forEach(m => {
+    const tr = document.createElement('tr');
+    const isActive = !m.unmerged_at;
+    const safeDupName = m.duplicate_entity_name.replace(/'/g, "\\'");
+    const statusOrAction = isActive
+      ? `<button onclick="unmergeConfirm(${m.id}, '${safeDupName}')">Unmerge</button>`
+      : `<span class="badge ent-restricted">Already undone</span>`;
+    tr.innerHTML = `
+      <td>${m.duplicate_entity_name}</td>
+      <td>${m.kept_entity_name || '(deleted)'}</td>
+      <td>${m.event_count || 0}</td>
+      <td>${m.anomaly_count || 0}</td>
+      <td>${m.merged_by || ''}</td>
+      <td class="time">${formatGMT(m.merged_at)}</td>
+      <td class="actions">${statusOrAction}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function unmergeConfirm(mergeId, duplicateName) {
+  if (!confirm(
+    `Undo this merge? "${duplicateName}" will be recreated as its own system again, and exactly the `
+    + `events/anomalies that were part of this merge will move back to it.`
+  )) return;
+  try {
+    const res = await authFetch(`/entities/merges/${mergeId}/unmerge`, { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.detail || 'Could not undo this merge.');
+      return;
+    }
+    await loadEntitiesManagement();
+    await refreshConfigEntityDropdown();
+  } catch (e) { /* ignore */ }
+}
+
+async function reassignEntityUnit(id, department) {
+  try {
+    await authFetch(`/entities/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ department: department || null }),
+    });
+  } catch (e) { /* ignore */ }
+}
+
+async function toggleEntityActive(id, currentlyActive) {
+  try {
+    await authFetch(`/entities/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: !currentlyActive }),
+    });
+    await loadEntitiesManagement();
+    await refreshConfigEntityDropdown();
+  } catch (e) { /* ignore */ }
+}
+
+async function deleteEntityConfirm(id, name) {
+  let alsoDeleteUsers = false;
+  try {
+    const res = await authFetch(`/entities/${id}/linked-users`);
+    const linked = await res.json();
+    if (linked.length > 0) {
+      const names = linked.map(u => `${u.username} (${u.role})`).join(', ');
+      alsoDeleteUsers = confirm(
+        `"${name}" has a dashboard login linked to it: ${names}.\n\n` +
+        `Click OK to delete BOTH the system and that login, or Cancel to keep the login ` +
+        `(it will just be unlinked from this system, not deleted).`
+      );
+      // Either way, confirm the deletion of the system itself is still wanted.
+      if (!confirm(`Permanently delete "${name}" and all of its events/anomalies? This cannot be undone.`)) {
+        return;
+      }
+    } else {
+      if (!confirm(`Permanently delete "${name}" and all of its events/anomalies? This cannot be undone.`)) return;
+    }
+  } catch (e) {
+    return; // couldn't check for linked users; don't proceed blind
+  }
+  try {
+    await authFetch(`/entities/${id}?also_delete_linked_users=${alsoDeleteUsers}`, { method: 'DELETE' });
+    await loadEntitiesManagement();
+    await refreshConfigEntityDropdown();
+    await refreshPendingBadge();
+  } catch (e) { /* ignore */ }
+}
+
+document.getElementById('addEntityBtn').addEventListener('click', async () => {
+  const name = document.getElementById('newEntityName').value.trim();
+  const entity_type = document.getElementById('newEntityType').value;
+  const deptSelectVal = document.getElementById('newEntityDept').value;
+  const department = deptSelectVal === '__other__'
+    ? document.getElementById('newEntityDeptOther').value.trim()
+    : deptSelectVal;
+  const note = document.getElementById('addEntityNote');
+  note.textContent = '';
+  if (!name) {
+    note.style.color = 'var(--critical)';
+    note.textContent = 'Name is required.';
+    return;
+  }
+  try {
+    const res = await authFetch('/entities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, entity_type, department: department || null }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      note.style.color = 'var(--critical)';
+      note.textContent = err.detail || 'Could not add the system.';
+      return;
+    }
+    document.getElementById('newEntityName').value = '';
+    document.getElementById('newEntityDept').value = '';
+    document.getElementById('newEntityDeptOther').value = '';
+    document.getElementById('newEntityDeptOther').style.display = 'none';
+    note.style.color = 'var(--resolved)';
+    note.textContent = 'Added.';
+    setTimeout(() => { note.textContent = ''; }, 3000);
+    await loadEntitiesManagement();
+    await refreshConfigEntityDropdown();
+  } catch (e) { /* ignore */ }
+});
+
+document.getElementById('configEntitySelect').addEventListener('change', (e) => loadConfigInto(e.target.value));
+
+async function loadConfigInto(entityId) {
+  const path = entityId ? `/config/${entityId}` : '/config/default';
+  document.getElementById('revertBtn').style.display = entityId ? 'inline-block' : 'none';
+  document.getElementById('configSourceNote').textContent = entityId
+    ? 'Overrides the global default for this entity only.'
+    : 'Applies to every entity without its own override.';
+  try {
+    const res = await authFetch(path);
+    const config = await res.json();
+    renderConfigForm(config, !entityId);
+  } catch (e) { /* ignore */ }
+}
+
+function renderConfigForm(config, isGlobalDefault) {
+  const container = document.getElementById('configForm');
+  container.innerHTML = '';
+  CONFIG_FIELDS.forEach(spec => {
+    // social_media_block_enabled is deliberately per-entity only -- there's
+    // no "block everyone" switch, to avoid an admin accidentally turning on
+    // blocking globally when they only meant to block one person.
+    if (spec.key === 'social_media_block_enabled' && isGlobalDefault) return;
+
+    const field = document.createElement('div');
+    const value = config[spec.key];
+
+    if (spec.type === 'checkbox') {
+      field.className = 'field checkbox-field';
+      field.innerHTML = `<input type="checkbox" id="cfg_${spec.key}" ${value ? 'checked' : ''}>
+                          <label for="cfg_${spec.key}">${spec.label}</label>`;
+    } else if (spec.type === 'timezone') {
+      field.className = 'field';
+      const zones = getAvailableTimezones();
+      const knownValue = zones.includes(value);
+      const options = zones.map(z => `<option value="${z}" ${z === value ? 'selected' : ''}>${formatTimezoneLabel(z)}</option>`).join('')
+        + (!knownValue && value ? `<option value="${value}" selected>${value} (custom)</option>` : '');
+      field.innerHTML = `<label for="cfg_${spec.key}">${spec.label}</label>
+                          <select id="cfg_${spec.key}">${options}</select>`;
+    } else if (spec.type === 'severity') {
+      field.className = 'field';
+      const options = SEVERITIES.map(s => `<option value="${s}" ${s === value ? 'selected' : ''}>${s}</option>`).join('');
+      field.innerHTML = `<label for="cfg_${spec.key}">${spec.label}</label>
+                          <select id="cfg_${spec.key}">${options}</select>`;
+    } else if (spec.type === 'workdays') {
+      field.className = 'field';
+      const current = value || [];
+      const boxes = WORKDAY_LABELS.map((label, i) => `
+        <label><input type="checkbox" class="cfg_workday" value="${i}" ${current.includes(i) ? 'checked' : ''}> ${label}</label>
+      `).join('');
+      field.innerHTML = `<label>${spec.label}</label><div class="workdays">${boxes}</div>`;
+    } else if (spec.type === 'time') {
+      field.className = 'field';
+      const timeValue = (value || '').toString().slice(0, 5); // HH:MM
+      field.innerHTML = `<label for="cfg_${spec.key}">${spec.label}</label>
+                          <input type="time" id="cfg_${spec.key}" value="${timeValue}">`;
+    } else if (spec.type === 'number') {
+      field.className = 'field';
+      field.innerHTML = `<label for="cfg_${spec.key}">${spec.label}</label>
+                          <input type="number" id="cfg_${spec.key}" value="${value ?? ''}" ${spec.step ? `step="${spec.step}"` : ''}>`;
+    } else {
+      field.className = 'field';
+      field.innerHTML = `<label for="cfg_${spec.key}">${spec.label}</label>
+                          <input type="text" id="cfg_${spec.key}" value="${value ?? ''}">`;
+    }
+    container.appendChild(field);
+  });
+
+  DETECTOR_GROUPS.forEach(groupDef => renderDetectorGroup(container, groupDef, config));
+}
+
+function renderDetectorGroup(container, groupDef, config) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'detector-group';
+
+  const enabled = config[groupDef.enabledKey];
+  const bodyId = `detectorBody_${groupDef.group}`;
+  const chevronId = `chevron_${groupDef.group}`;
+
+  const header = document.createElement('div');
+  header.className = 'detector-header';
+  header.tabIndex = 0;
+  header.setAttribute('role', 'button');
+  header.setAttribute('aria-expanded', 'false');
+  header.setAttribute('aria-controls', bodyId);
+  header.innerHTML = `
+    <input type="checkbox" id="cfg_${groupDef.enabledKey}" ${enabled ? 'checked' : ''} onclick="event.stopPropagation()">
+    <span class="name">${groupDef.label}</span>
+    <span class="chevron" id="${chevronId}">&#9656;</span>
+  `;
+  header.addEventListener('click', () => toggleDetectorGroup(groupDef.group));
+  header.addEventListener('keydown', (ev) => {
+    if (ev.target.tagName === 'INPUT') return; // let the checkbox handle its own keys
+    if (ev.key === 'Enter' || ev.key === ' ') {
+      ev.preventDefault();
+      toggleDetectorGroup(groupDef.group);
+    }
+  });
+  wrapper.appendChild(header);
+
+  const body = document.createElement('div');
+  body.className = 'detector-body';
+  body.id = bodyId;
+
+  const extraFieldsHtml = groupDef.extraFields.map(f => `
+    <div class="field">
+      <label for="cfg_${f.key}">${f.label}</label>
+      <input type="number" id="cfg_${f.key}" value="${config[f.key] ?? ''}" step="${f.step}">
+    </div>
+  `).join('');
+
+  const tiersHtml = groupDef.tiers.map(t => `
+    <div class="field">
+      <label for="cfg_${t.key}">${t.label}</label>
+      <input type="number" id="cfg_${t.key}" value="${config[t.key] ?? ''}" step="${t.step}">
+    </div>
+  `).join('');
+
+  body.innerHTML = extraFieldsHtml + tiersHtml;
+  wrapper.appendChild(body);
+
+  container.appendChild(wrapper);
+}
+
+function toggleDetectorGroup(group) {
+  const body = document.getElementById(`detectorBody_${group}`);
+  const chevron = document.getElementById(`chevron_${group}`);
+  const header = chevron.closest('.detector-header');
+  const isOpen = body.classList.toggle('open');
+  chevron.classList.toggle('open', isOpen);
+  if (header) header.setAttribute('aria-expanded', String(isOpen));
+}
+
+function collectConfigPayload(isGlobalDefault) {
+  const payload = { changed_by: currentUser.username };
+  CONFIG_FIELDS.forEach(spec => {
+    if (spec.key === 'social_media_block_enabled' && isGlobalDefault) return; // never rendered for global default -- see renderConfigForm
+    if (spec.type === 'checkbox') {
+      payload[spec.key] = document.getElementById(`cfg_${spec.key}`).checked;
+    } else if (spec.type === 'workdays') {
+      payload[spec.key] = Array.from(document.querySelectorAll('.cfg_workday:checked')).map(el => parseInt(el.value, 10));
+    } else if (spec.type === 'number') {
+      const raw = document.getElementById(`cfg_${spec.key}`).value;
+      payload[spec.key] = raw === '' ? null : Number(raw);
+    } else {
+      payload[spec.key] = document.getElementById(`cfg_${spec.key}`).value;
+    }
+  });
+  DETECTOR_GROUPS.forEach(groupDef => {
+    payload[groupDef.enabledKey] = document.getElementById(`cfg_${groupDef.enabledKey}`).checked;
+    groupDef.extraFields.concat(groupDef.tiers).forEach(f => {
+      const raw = document.getElementById(`cfg_${f.key}`).value;
+      payload[f.key] = raw === '' ? null : Number(raw);
+    });
+  });
+  return payload;
+}
+
+document.getElementById('saveConfigBtn').addEventListener('click', async () => {
+  const entityId = document.getElementById('configEntitySelect').value;
+  const path = entityId ? `/config/${entityId}` : '/config/default';
+  const note = document.getElementById('saveNote');
+  note.textContent = '';
+  try {
+    const res = await authFetch(path, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(collectConfigPayload(!entityId)),
+    });
+    if (res.ok) {
+      note.textContent = 'Saved.';
+      setTimeout(() => { note.textContent = ''; }, 3000);
+    } else {
+      note.style.color = 'var(--critical)';
+      note.textContent = 'Save failed -- check the values and try again.';
+    }
+  } catch (e) { /* session expiry already handled */ }
+});
+
+document.getElementById('revertBtn').addEventListener('click', async () => {
+  const entityId = document.getElementById('configEntitySelect').value;
+  if (!entityId) return;
+  try {
+    await authFetch(`/config/${entityId}?changed_by=${encodeURIComponent(currentUser.username)}`, { method: 'DELETE' });
+    await loadConfigInto(entityId); // now shows the (now-reverted) effective config, i.e. the default
+  } catch (e) { /* ignore */ }
+});
+
+// ---------------------------------------------------------------------------
+// Startup: if we already have a token, verify it's still valid before
+// showing the dashboard; otherwise show the login screen.
+// ---------------------------------------------------------------------------
+(async function start() {
+  const token = getToken();
+  if (!token) {
+    showLogin();
+    return;
+  }
+  try {
+    const res = await fetch(`${API}/auth/me`, { headers: authHeaders() });
+    if (res.ok) {
+      currentUser = await res.json();
+      showApp();
+    } else {
+      clearToken();
+      showLogin();
+    }
+  } catch (e) {
+    showLogin();
+  }
+})();
+
+// ---- Theme (white / blue mode) and adjustable font size ----------------
+const FONT_ZOOM_STEPS = [0.85, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4];
+
+function currentZoomIndex() {
+  const saved = parseFloat(localStorage.getItem('uebaZoom')) || 1.0;
+  let closest = 0, closestDiff = Infinity;
+  FONT_ZOOM_STEPS.forEach((z, i) => {
+    const diff = Math.abs(z - saved);
+    if (diff < closestDiff) { closestDiff = diff; closest = i; }
+  });
+  return closest;
+}
+
+function setZoomIndex(index) {
+  const clamped = Math.max(0, Math.min(FONT_ZOOM_STEPS.length - 1, index));
+  const zoom = FONT_ZOOM_STEPS[clamped];
+  document.documentElement.style.setProperty('--app-zoom', zoom);
+  try { localStorage.setItem('uebaZoom', zoom); } catch (e) {}
+}
+
+const systemDarkQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+function resolveTheme(preference) {
+  // Turns a saved preference ('auto', 'blue', 'black', 'white') into the
+  // theme that should actually be displayed right now.
+  if (preference !== 'auto') return preference;
+  return (systemDarkQuery && systemDarkQuery.matches) ? 'blue' : 'white';
+}
+
+function applyResolvedTheme(resolved) {
+  document.body.classList.remove('theme-white', 'theme-black');
+  if (resolved === 'white') document.body.classList.add('theme-white');
+  else if (resolved === 'black') document.body.classList.add('theme-black');
+}
+
+function setThemePreference(preference) {
+  applyResolvedTheme(resolveTheme(preference));
+  try { localStorage.setItem('uebaTheme', preference); } catch (e) {}
+  const select = document.getElementById('themeSelect');
+  if (select) select.value = preference;
+}
+
+function currentThemePreference() {
+  try {
+    return localStorage.getItem('uebaTheme') || 'auto';
+  } catch (e) {
+    return 'auto';
+  }
+}
+
+document.getElementById('themeSelect').addEventListener('change', (ev) => setThemePreference(ev.target.value));
+document.getElementById('fontSmallerBtn').addEventListener('click', () => setZoomIndex(currentZoomIndex() - 1));
+document.getElementById('fontLargerBtn').addEventListener('click', () => setZoomIndex(currentZoomIndex() + 1));
+document.getElementById('themeSelect').value = currentThemePreference();
+
+// If "Auto" is selected and the user changes their OS/browser theme while
+// this tab is open, follow it live instead of waiting for a refresh.
+if (systemDarkQuery) {
+  systemDarkQuery.addEventListener('change', () => {
+    if (currentThemePreference() === 'auto') {
+      applyResolvedTheme(resolveTheme('auto'));
+    }
+  });
+}
+</script>
+</body>
+</html>
